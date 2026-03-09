@@ -1,53 +1,25 @@
-# USB-HID-CAN
+# USB Host Joystick to CAN Translator
 
-Smart OBD firmware workspace structured for CubeMX regeneration and target/module separation.
+Standalone translator firmware workspace:
 
-## Repository Layout
+- USB Thrustmaster joystick input over STM32 USB Host HID
+- mapped into CAN control/status frames for an RC controller
 
-- `firmware/shared/`
-  - `core/`: generic support modules (`spsc_ring`)
-  - `can/`: CAN frame abstraction (`can_types`)
-  - `obd/`: OBD-II Mode 01 helpers
-  - `protocol/`: HID report protocol definitions/packers
-- `firmware/targets/stm32_f407_canusb_hid/`
-  - CubeMX target (`.ioc`, `Core`, `USB_DEVICE`, `Drivers`, `Middlewares`)
-  - app logic in `App/`, board hooks in `Target/`
-- `firmware/tools/host_test/`
-  - host-side smoke scripts
-- `docs/`
-  - status/inventory, target docs, regeneration rules
+## Active Layout
 
-## HID Protocol (64-byte reports)
+- `firmware/shared/core`
+- `firmware/shared/can`
+- `firmware/shared/usb_host_hid`
+- `firmware/shared/mapping`
+- `firmware/targets/stm32_f407_usbhost_can_joystick`
 
-Byte layout (little-endian):
+## Direction
 
-- `0`: `report_id`
-- `1`: `type/cmd`
-- `2`: `flags` (`bit0=extended`, `bit1=RTR`)
-- `3`: `dlc`
-- `4..7`: `can_id`
-- `8..11`: `seq`
-- `12..15`: `value`
-- `16..23`: `data[8]`
-- `24..63`: reserved
+- USB is host-mode HID only in the active path.
+- CAN1 is the outbound control transport.
+- PC USB device HID and OBD request/response are not part of the active architecture.
 
-Report IDs:
+## Key Docs
 
-- `0x01` HOST -> DEV command
-- `0x81` DEV -> HOST event
-
-Commands (`type` on `0x01`):
-
-- `0x01` CAN TX
-- `0x02` OBD request (`data[0]=mode`, `data[1]=pid`)
-- `0x03` set CAN bitrate (`value=bitrate_bps`)
-- `0x04` set CAN filter (`can_id=id`, `value=mask`)
-
-Events (`type` on `0x81`):
-
-- `0x01` CAN RX frame
-- `0x02` OBD response
-- `0x03` status
-- `0x7F` error
-
-Status/error codes are returned in `value`.
+- `docs/ARCHITECTURE.md` - end-to-end translator architecture
+- `docs/STATUS_USB_HOST.md` - audit status for USB host enumeration/polling and rewrite scope

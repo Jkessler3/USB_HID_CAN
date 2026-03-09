@@ -1,8 +1,8 @@
 # Shared Modules
 
-Transport-agnostic reusable firmware logic lives here.
+Reusable firmware modules for the standalone translator live here.
 
 - `core/`: generic utility components (`spsc_ring`)
 - `can/`: common CAN data structures
-- `obd/`: OBD-II Mode 01 helpers
-- `protocol/`: HID report protocol definitions + pack/unpack helpers
+- `usb_host_hid/`: USB host HID state + generic joystick report parsing helpers
+- `mapping/`: joystick-to-CAN mapping tables + fixed-rate/failsafe frame generation

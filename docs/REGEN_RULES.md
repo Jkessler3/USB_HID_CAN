@@ -3,51 +3,47 @@
 ## Hard Rules
 
 1. Do not place business logic in generated files except inside USER CODE blocks.
-2. Keep application logic in:
-   - `firmware/targets/<target>/App/`
-   - `firmware/targets/<target>/Target/`
-   - `firmware/shared/`
-3. Keep transport protocol/packing logic out of USB middleware files.
-4. Keep ISR callbacks short: enqueue only, no blocking work.
+2. Keep translator logic in shared modules:
+   - `firmware/shared/core`
+   - `firmware/shared/can`
+   - `firmware/shared/usb_host_hid`
+   - `firmware/shared/mapping`
+3. Keep target-specific glue in `firmware/targets/stm32_f407_usbhost_can_joystick`.
+4. Keep ISR callbacks short and non-blocking.
 
 ## File Ownership
 
 Generated or generated-adjacent (edit only in USER CODE blocks when possible):
 
-- `firmware/targets/stm32_f407_canusb_hid/Core/*`
-- `firmware/targets/stm32_f407_canusb_hid/USB_DEVICE/*`
-- `firmware/targets/stm32_f407_canusb_hid/Drivers/*`
-- `firmware/targets/stm32_f407_canusb_hid/Middlewares/*`
-- `firmware/targets/stm32_f407_canusb_hid/stm32_f407_canusb_hid.ioc`
+- `firmware/targets/stm32_f407_usbhost_can_joystick/Core/*`
+- `firmware/targets/stm32_f407_usbhost_can_joystick/USB_HOST/*`
+- `firmware/targets/stm32_f407_usbhost_can_joystick/Drivers/*`
+- `firmware/targets/stm32_f407_usbhost_can_joystick/Middlewares/*`
+- `firmware/targets/stm32_f407_usbhost_can_joystick/stm32_f407_usbhost_can_joystick.ioc`
 
 User-owned files (safe for full edits):
 
-- `firmware/targets/stm32_f407_canusb_hid/App/*`
-- `firmware/targets/stm32_f407_canusb_hid/Target/*`
 - `firmware/shared/**/*`
 - `firmware/tools/**/*`
+- `docs/**/*`
 
 ## Required Control Flow Contract
 
 `Core/Src/main.c` must keep this pattern:
 
 1. HAL + clock + MX init
-2. `app_init()` (USER CODE block)
-3. `while(1)` calls `app_loop()` (USER CODE block)
+2. USB host init
+3. CAN init/start/filter setup
+4. `while(1)` continuously calls `MX_USB_HOST_Process()` and translator task code in USER CODE blocks
 
-`USB_DEVICE/App/usbd_custom_hid_if.c`:
+USB host callback path:
 
-1. Keep report descriptor and callbacks
-2. OUT callback enqueues report via transport API and returns quickly
+1. Keep USB host class/event plumbing in `USB_HOST/App/usb_host.c`
+2. Keep joystick report parsing and mapping logic in shared modules
 
-CAN RX callback:
+CAN path:
 
-1. Convert HAL frame to shared `can_frame_t`
-2. Enqueue to transport
-3. Do not perform USB TX in ISR
+1. Use CAN1 for translator output frames
+2. Keep disconnect/timeout failsafe logic active in the transmit path
 
-Main app loop:
-
-1. Process queued host commands
-2. Drain CAN RX queue
-3. Attempt HID IN transmit and retry later on USB busy
+Active architecture is USB host HID to CAN translation only. Do not add PC USB device HID in the active target path.

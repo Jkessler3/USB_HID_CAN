@@ -1,2 +1,9 @@
 __pycache__/
 *.pyc
+
+# STM32CubeIDE build output
+**/Debug/
+**/Release/
+
+# Workspace-level Eclipse metadata (target-level .project is kept)
+/.project
