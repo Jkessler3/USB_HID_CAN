@@ -29,6 +29,10 @@
 #include "usb_host.h"
 
 /* USER CODE BEGIN INCLUDE */
+/* Set to 1 only when the board has a real GPIO-controlled USB VBUS switch. */
+#ifndef USBH_HAS_VBUS_SWITCH
+#define USBH_HAS_VBUS_SWITCH 0
+#endif
 
 /* USER CODE END INCLUDE */
 

@@ -14,6 +14,12 @@ This checklist is for the active standalone translator target:
   - CAN transceiver wired to `PB8/PB9`
   - Correct CAN bus termination
 
+If the board has no GPIO-controlled VBUS switch, keep `USBH_HAS_VBUS_SWITCH` at `0` in:
+
+- `firmware/targets/stm32_f407_usbhost_can_joystick/USB_HOST/Target/usbh_platform.h`
+
+This makes `MX_DriverVbusFS()` a no-op so `USBH_LL_DriverVBUS()` will not toggle a nonexistent switch pin.
+
 ## 1.1) Post-Regeneration Sanity Checks
 
 - Target still builds from `firmware/targets/stm32_f407_usbhost_can_joystick`.

@@ -36,6 +36,11 @@ void MX_DriverVbusFS(uint8_t state)
 {
   uint8_t data = state;
   /* USER CODE BEGIN PREPARE_GPIO_DATA_VBUS_FS */
+#if (USBH_HAS_VBUS_SWITCH == 0)
+  /* No board-side VBUS switch is present: keep this function as a no-op. */
+  (void)state;
+  return;
+#else
   if(state == 0)
   {
     /* Drive high Charge pump */
@@ -46,6 +51,7 @@ void MX_DriverVbusFS(uint8_t state)
     /* Drive low Charge pump */
     data = GPIO_PIN_SET;
   }
+#endif
   /* USER CODE END PREPARE_GPIO_DATA_VBUS_FS */
   HAL_GPIO_WritePin(GPIOC,GPIO_PIN_9,(GPIO_PinState)data);
 }
