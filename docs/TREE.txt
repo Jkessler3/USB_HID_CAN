@@ -1,0 +1,36 @@
+# Repository tree snapshot (pre-migration, depth 5)
++- can_core
+   +- include
+      +- can_core.h
+   +- src
+      +- can_core.c
+   +- CMakeLists.txt
+   +- README.md
++- docs
+   +- STATUS.md
+   +- TREE.txt
++- firmware
+   +- stm32f407_usb_hid_can
+      +- Core
+         +- Inc
+            +- can.h
+            +- host_interface_compat.h
+            +- main.h
+            +- usb_hid_transport.h
+         +- Src
+            +- can.c
+            +- host_interface_compat.c
+            +- main.c
+            +- usb_hid_transport.c
+      +- USB_DEVICE
+         +- App
+            +- usb_device.c
+            +- usb_device.h
+            +- usbd_custom_hid_if.c
+            +- usbd_custom_hid_if.h
+      +- README.md
+      +- STM32F407_USB_HID_CAN.ioc
++- tools
+   +- hid_obd_test.py
++- .gitignore
++- README.md
