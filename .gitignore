@@ -7,3 +7,6 @@ __pycache__/
 
 # Workspace-level Eclipse metadata (target-level .project is kept)
 /.project
+
+# Local debug session logs
+debug_gdbserver*.log

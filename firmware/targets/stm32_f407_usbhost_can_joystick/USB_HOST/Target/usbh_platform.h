@@ -34,6 +34,15 @@
 #define USBH_HAS_VBUS_SWITCH 0
 #endif
 
+/*
+ * Polarity for the VBUS switch enable GPIO when USBH_HAS_VBUS_SWITCH == 1:
+ * 1 => GPIO high enables 5V VBUS output
+ * 0 => GPIO low enables 5V VBUS output
+ */
+#ifndef USBH_VBUS_SWITCH_ACTIVE_HIGH
+#define USBH_VBUS_SWITCH_ACTIVE_HIGH 1
+#endif
+
 /* USER CODE END INCLUDE */
 
 void MX_DriverVbusFS(uint8_t state);

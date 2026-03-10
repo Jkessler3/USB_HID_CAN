@@ -87,6 +87,7 @@ EndBSPDependencies */
 /** @defgroup USBH_HID_CORE_Private_Variables
   * @{
   */
+static uint8_t hid_generic_rx_report_buf[USBH_MAX_DATA_BUFFER];
 
 /**
   * @}
@@ -102,6 +103,7 @@ static USBH_StatusTypeDef USBH_HID_InterfaceDeInit(USBH_HandleTypeDef *phost);
 static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost);
 static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost);
 static USBH_StatusTypeDef USBH_HID_SOFProcess(USBH_HandleTypeDef *phost);
+static USBH_StatusTypeDef USBH_HID_GenericInit(USBH_HandleTypeDef *phost);
 static void USBH_HID_ParseHIDDesc(HID_DescTypeDef *desc, uint8_t *buf);
 
 extern USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost);
@@ -143,7 +145,7 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
   uint8_t num = 0U;
   uint8_t interface;
 
-  interface = USBH_FindInterface(phost, phost->pActiveClass->ClassCode, HID_BOOT_CODE, 0xFFU);
+  interface = USBH_FindInterface(phost, phost->pActiveClass->ClassCode, 0xFFU, 0xFFU);
 
   if ((interface == 0xFFU) || (interface >= USBH_MAX_NUM_INTERFACES)) /* No Valid Interface */
   {
@@ -172,7 +174,7 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
 
   HID_Handle->state = USBH_HID_ERROR;
 
-  /*Decode Bootclass Protocol: Mouse or Keyboard*/
+  /* Decode protocol: boot keyboard/mouse or generic HID interrupt device */
   if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol == HID_KEYBRD_BOOT_CODE)
   {
     USBH_UsrLog("KeyBoard device found!");
@@ -185,8 +187,8 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
   }
   else
   {
-    USBH_UsrLog("Protocol not supported.");
-    return USBH_FAIL;
+    USBH_UsrLog("Generic HID device found.");
+    HID_Handle->Init = USBH_HID_GenericInit;
   }
 
   HID_Handle->state     = USBH_HID_INIT;
@@ -235,6 +237,44 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
       (void)USBH_LL_SetToggle(phost, HID_Handle->OutPipe, 0U);
     }
   }
+
+  return USBH_OK;
+}
+
+/**
+  * @brief  USBH_HID_GenericInit
+  *         Generic HID init for non-boot devices (joysticks/gamepads).
+  * @param  phost: Host handle
+  * @retval USBH Status
+  */
+static USBH_StatusTypeDef USBH_HID_GenericInit(USBH_HandleTypeDef *phost)
+{
+  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *)phost->pActiveClass->pData;
+  uint16_t fifo_size;
+
+  if (HID_Handle == NULL)
+  {
+    return USBH_FAIL;
+  }
+
+  if (HID_Handle->length == 0U)
+  {
+    return USBH_FAIL;
+  }
+
+  /* Keep the transfer length bounded by the host data buffer. */
+  if (HID_Handle->length > (uint16_t)sizeof(hid_generic_rx_report_buf))
+  {
+    HID_Handle->length = (uint16_t)sizeof(hid_generic_rx_report_buf);
+  }
+
+  HID_Handle->pData = hid_generic_rx_report_buf;
+  fifo_size = (uint16_t)(HID_QUEUE_SIZE * HID_Handle->length);
+  if ((fifo_size == 0U) || (fifo_size > (uint16_t)sizeof(phost->device.Data)))
+  {
+    fifo_size = (uint16_t)sizeof(phost->device.Data);
+  }
+  USBH_HID_FifoInit(&HID_Handle->fifo, phost->device.Data, fifo_size);
 
   return USBH_OK;
 }
@@ -921,4 +961,3 @@ __weak void USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
 /**
   * @}
   */
-

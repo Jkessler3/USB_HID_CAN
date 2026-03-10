@@ -41,15 +41,21 @@ void MX_DriverVbusFS(uint8_t state)
   (void)state;
   return;
 #else
-  if(state == 0)
+  if(state == 0U)
   {
-    /* Drive high Charge pump */
+#if (USBH_VBUS_SWITCH_ACTIVE_HIGH == 1)
     data = GPIO_PIN_RESET;
+#else
+    data = GPIO_PIN_SET;
+#endif
   }
   else
   {
-    /* Drive low Charge pump */
+#if (USBH_VBUS_SWITCH_ACTIVE_HIGH == 1)
     data = GPIO_PIN_SET;
+#else
+    data = GPIO_PIN_RESET;
+#endif
   }
 #endif
   /* USER CODE END PREPARE_GPIO_DATA_VBUS_FS */

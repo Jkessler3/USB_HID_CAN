@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "STM32: Build Debug",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/firmware/tools/build/build.ps1",
+        "-Target",
+        "stm32_f407_usbhost_can_joystick",
+        "-Config",
+        "Debug"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "STM32: Build Debug (Clean)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/firmware/tools/build/build.ps1",
+        "-Target",
+        "stm32_f407_usbhost_can_joystick",
+        "-Config",
+        "Debug",
+        "-Clean"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

@@ -23,6 +23,7 @@
 #include "usbh_platform.h"
 
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -32,6 +33,9 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+static uint32_t g_usb_vbus_diag_calls = 0U;
+static uint32_t g_usb_vbus_diag_last_state = 0xFFFFFFFFU;
+static uint32_t g_usb_vbus_diag_last_tick = 0U;
 
 /* USER CODE END PV */
 
@@ -464,6 +468,36 @@ USBH_StatusTypeDef USBH_LL_DriverVBUS(USBH_HandleTypeDef *phost, uint8_t state)
   }
 
   /* USER CODE BEGIN 0 */
+  {
+    uint32_t now = HAL_GetTick();
+    g_usb_vbus_diag_calls++;
+
+    if ((((uint32_t)state) != g_usb_vbus_diag_last_state) ||
+        ((now - g_usb_vbus_diag_last_tick) >= 1000U)) {
+      GPIO_PinState pc9_level = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9);
+      uint32_t host_g = (phost != NULL) ? (uint32_t)phost->gState : 0xFFFFFFFFU;
+      uint32_t host_enum = (phost != NULL) ? (uint32_t)phost->EnumState : 0xFFFFFFFFU;
+      uint32_t host_req = (phost != NULL) ? (uint32_t)phost->RequestState : 0xFFFFFFFFU;
+      uint32_t dev_conn = (phost != NULL) ? (uint32_t)phost->device.is_connected : 0xFFFFFFFFU;
+      uint32_t dev_disc = (phost != NULL) ? (uint32_t)phost->device.is_disconnected : 0xFFFFFFFFU;
+
+      printf("USB VBUS drv n=%lu state=%u sw=%u pol_hi=%u pc9=%u t=%lu g=%lu e=%lu r=%lu c=%lu d=%lu\r\n",
+             g_usb_vbus_diag_calls,
+             (unsigned)state,
+             (unsigned)USBH_HAS_VBUS_SWITCH,
+             (unsigned)USBH_VBUS_SWITCH_ACTIVE_HIGH,
+             (unsigned)pc9_level,
+             now,
+             host_g,
+             host_enum,
+             host_req,
+             dev_conn,
+             dev_disc);
+
+      g_usb_vbus_diag_last_state = (uint32_t)state;
+      g_usb_vbus_diag_last_tick = now;
+    }
+  }
 
   /* USER CODE END 0*/
 

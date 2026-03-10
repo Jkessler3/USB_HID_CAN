@@ -31,6 +31,24 @@
 #include "stm32f4xx_hal.h"
 
 /* USER CODE BEGIN INCLUDE */
+typedef enum {
+  USB_HOST_DBG_FAIL_NONE = 0,
+  USB_HOST_DBG_FAIL_DISCONNECT = 1,
+  USB_HOST_DBG_FAIL_UNRECOVERED = 2,
+  USB_HOST_DBG_FAIL_OTHER = 3
+} usb_host_dbg_fail_t;
+
+typedef struct {
+  volatile uint8_t last_app_state;
+  volatile uint8_t last_core_host_state;
+  volatile uint8_t last_enum_step;
+  volatile uint8_t last_error_code;
+  volatile uint16_t last_vid;
+  volatile uint16_t last_pid;
+  volatile uint32_t last_update_ms;
+} usb_host_debug_status_t;
+
+extern volatile usb_host_debug_status_t g_usb_host_debug_status;
 
 /* USER CODE END INCLUDE */
 

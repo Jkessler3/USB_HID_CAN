@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "STM32F407 Debug (ST-LINK/SWD)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/firmware/targets/stm32_f407_usbhost_can_joystick/Debug/stm32_f407_usbhost_can_joystick.elf",
+      "servertype": "stlink",
+      "interface": "swd",
+      "device": "STM32F407VG",
+      "stlinkPath": "C:/ST/STM32CubeIDE_1.19.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.stlink-gdb-server.win32_2.2.300.202509021040/tools/bin/ST-LINK_gdbserver.exe",
+      "stm32cubeprogrammer": "C:/ST/STM32CubeIDE_1.19.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.win32_2.2.300.202508131133/tools/bin",
+      "serverArgs": [
+        "-k",
+        "-d",
+        "--frequency",
+        "1000"
+      ],
+      "gdbPath": "C:/ST/STM32CubeIDE_1.19.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.13.3.rel1.win32_1.0.100.202509120712/tools/bin/arm-none-eabi-gdb.exe",
+      "svdFile": "C:/ST/STM32CubeIDE_1.19.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.productdb.debug_2.2.300.202510101821/resources/cmsis/STMicroelectronics_CMSIS_SVD/STM32F407.svd",
+      "runToEntryPoint": "main",
+      "preLaunchTask": "STM32: Build Debug",
+      "postRestartCommands": [
+        "monitor reset halt"
+      ],
+      "showDevDebugOutput": "raw"
+    }
+  ]
+}

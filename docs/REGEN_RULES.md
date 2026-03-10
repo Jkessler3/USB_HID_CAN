@@ -21,6 +21,12 @@ Generated or generated-adjacent (edit only in USER CODE blocks when possible):
 - `firmware/targets/stm32_f407_usbhost_can_joystick/Middlewares/*`
 - `firmware/targets/stm32_f407_usbhost_can_joystick/stm32_f407_usbhost_can_joystick.ioc`
 
+Current known exception (intentional):
+
+- `firmware/targets/stm32_f407_usbhost_can_joystick/Middlewares/ST/STM32_USB_Host_Library/Class/HID/Src/usbh_hid.c`
+  - Reason: stock ST HID class only accepts boot keyboard/mouse interfaces; this project requires generic HID joystick/gamepad support.
+  - Impact: this file can be overwritten by middleware regeneration/update and must be re-applied if replaced.
+
 User-owned files (safe for full edits):
 
 - `firmware/shared/**/*`
