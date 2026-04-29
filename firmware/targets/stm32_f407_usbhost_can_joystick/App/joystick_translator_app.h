@@ -1,52 +1,30 @@
 #ifndef JOYSTICK_TRANSLATOR_APP_H
 #define JOYSTICK_TRANSLATOR_APP_H
 
-#include <stdbool.h>
 #include <stdint.h>
 
-#include "can_types.h"
-#include "joystick_can_mapping.h"
-#include "usb_host_hid.h"
+#include "../Core/Inc/main.h"
+#include "../Middlewares/ST/STM32_USB_Host_Library/Core/Inc/usbh_core.h"
+#include "../USB_HOST/App/usb_host.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct {
-    usb_host_hid_device_info_t hid_device;
-    usb_host_hid_report_layout_t hid_layout;
-    usb_host_hid_joystick_state_t joystick_state;
-    joystick_can_mapping_table_t mapping;
-    joystick_can_pipeline_state_t pipeline;
-} joystick_translator_app_t;
+void joystick_translator_app_bind_uart(UART_HandleTypeDef *huart);
 
-void joystick_translator_app_init(joystick_translator_app_t *app, uint32_t now_ms);
+void joystick_translator_app_init(CAN_HandleTypeDef *hcan,
+                                  UART_HandleTypeDef *huart,
+                                  USBH_HandleTypeDef *usb_host,
+                                  ApplicationTypeDef initial_state,
+                                  uint32_t now_ms);
 
-void joystick_translator_app_on_usb_connect(joystick_translator_app_t *app,
-                                            uint32_t now_ms);
+void joystick_translator_app_run(uint32_t now_ms,
+                                 ApplicationTypeDef appli_state);
 
-void joystick_translator_app_on_usb_disconnect(joystick_translator_app_t *app,
-                                               uint32_t now_ms);
+void joystick_translator_app_on_hid_report(USBH_HandleTypeDef *phost);
 
-void joystick_translator_app_on_usb_class_selected(joystick_translator_app_t *app,
-                                                   uint16_t vid,
-                                                   uint16_t pid,
-                                                   uint8_t speed,
-                                                   uint8_t interface_count,
-                                                   uint32_t now_ms);
-
-void joystick_translator_app_on_usb_class_active(joystick_translator_app_t *app,
-                                                 uint32_t now_ms);
-
-bool joystick_translator_app_on_hid_report(joystick_translator_app_t *app,
-                                           const uint8_t *report,
-                                           uint16_t report_len,
-                                           uint32_t now_ms);
-
-bool joystick_translator_app_poll_can_frame(joystick_translator_app_t *app,
-                                            uint32_t now_ms,
-                                            can_frame_t *out_frame,
-                                            joystick_can_tx_kind_t *out_kind);
+void joystick_translator_app_on_can_rx_pending(CAN_HandleTypeDef *hcan);
 
 #ifdef __cplusplus
 }

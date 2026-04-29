@@ -16,6 +16,13 @@ extern "C" {
 #define JOYSTICK_CAN_MAX_AXIS_MAPS USB_HOST_HID_MAX_AXES
 #define JOYSTICK_CAN_MAX_BUTTON_MAPS 16U
 
+#define JOYSTICK_CAN_STATUS_JOYSTICK_PRESENT        0x01U
+#define JOYSTICK_CAN_STATUS_HID_SAMPLE_VALID        0x02U
+#define JOYSTICK_CAN_STATUS_DATA_STALE              0x04U
+#define JOYSTICK_CAN_STATUS_TX_BACKPRESSURE_SEEN    0x08U
+#define JOYSTICK_CAN_STATUS_HID_PARSE_ERROR         0x10U
+#define JOYSTICK_CAN_STATUS_USB_DISCONNECTED        0x20U
+
 typedef struct {
     uint8_t axis_index;
     uint8_t signal_index;
@@ -64,6 +71,10 @@ typedef struct {
     bool connected;
     bool failsafe_active;
     bool has_sample;
+    bool can_tx_backpressure_seen;
+    bool hid_parse_error;
+    bool usb_disconnected;
+    uint32_t can_tx_backpressure_count;
     uint32_t last_report_ms;
     uint32_t last_control_tx_ms;
     uint32_t last_status_tx_ms;
@@ -82,6 +93,10 @@ void joystick_can_pipeline_on_disconnect(joystick_can_pipeline_state_t *state,
 
 void joystick_can_pipeline_submit_sample(joystick_can_pipeline_state_t *state,
                                          const usb_host_hid_joystick_state_t *sample);
+
+void joystick_can_pipeline_note_tx_backpressure(joystick_can_pipeline_state_t *state);
+
+void joystick_can_pipeline_note_hid_parse_error(joystick_can_pipeline_state_t *state);
 
 bool joystick_can_pipeline_is_failsafe(const joystick_can_mapping_table_t *table,
                                        const joystick_can_pipeline_state_t *state,

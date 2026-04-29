@@ -4,9 +4,36 @@ __pycache__/
 # STM32CubeIDE build output
 **/Debug/
 **/Release/
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/
+firmware/targets/stm32_f407_usbhost_can_joystick/Debug/**
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/makefile
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/sources.mk
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/objects.list
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/App/
+firmware/targets/stm32_f407_usbhost_can_joystick/Debug/App/**
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/App/subdir.mk
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/
+firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/**
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/can/
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/can/src/
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/can/src/subdir.mk
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/core/
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/core/src/
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/core/src/subdir.mk
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/mapping/
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/mapping/src/
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/mapping/src/subdir.mk
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/usb_host_hid/
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/usb_host_hid/src/
+!firmware/targets/stm32_f407_usbhost_can_joystick/Debug/shared/usb_host_hid/src/subdir.mk
 
 # Workspace-level Eclipse metadata (target-level .project is kept)
 /.project
 
 # Local debug session logs
 debug_gdbserver*.log
+
+# .NET mapper build output
+tools/JoystickMapper/**/bin/
+tools/JoystickMapper/**/obj/
+tools/JoystickMapper/dist/

@@ -1,0 +1,301 @@
+<Window x:Class="JoystickMapper.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:JoystickMapper.App.ViewModels"
+        Title="CAN-USB Joystick Mapper" Width="1240" Height="820" MinWidth="1040" MinHeight="680">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="#172033" />
+            <Setter Property="BorderBrush" Value="#26344F" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Margin" Value="8" />
+        </Style>
+        <Style x:Key="Badge" TargetType="Border">
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Background" Value="#334155" />
+        </Style>
+        <Style x:Key="FlagPill" TargetType="Border">
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Background" Value="#334155" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <Setter Property="Background" Value="#0F766E" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ButtonDot" TargetType="Border">
+            <Setter Property="Width" Value="42" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="#1E293B" />
+            <Setter Property="BorderBrush" Value="#334155" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Margin" Value="3" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsPressed}" Value="True">
+                    <Setter Property="Background" Value="#22C55E" />
+                    <Setter Property="BorderBrush" Value="#86EFAC" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Background="#0F172A">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#111827" Padding="20,14" BorderBrush="#1F2937" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="CAN-USB Joystick Mapper" Foreground="#F8FAFC" FontSize="24" FontWeight="Bold" Margin="0,0,18,0" />
+                    <Border Style="{StaticResource Badge}">
+                        <TextBlock Text="{Binding DeviceStatus}" Foreground="#E0F2FE" FontWeight="SemiBold" />
+                    </Border>
+                    <TextBox Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged}" Width="260" Margin="14,0,0,0" />
+                    <TextBlock Text="{Binding ProtocolVersion}" Foreground="#94A3B8" VerticalAlignment="Center" Margin="14,0,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="Apply" Command="{Binding ApplyCommand}" />
+                    <Button Content="Save" Command="{Binding SaveProfileCommand}" />
+                    <Button Content="Export" Command="{Binding ExportProfileCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="1" Margin="16" Background="#0F172A" BorderThickness="0">
+            <TabItem Header="Dashboard">
+                <ScrollViewer>
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <Border Style="{StaticResource Card}">
+                                <DockPanel>
+                                    <TextBlock Text="Live Joystick State" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                                    <CheckBox Content="Demo Mode" IsChecked="{Binding DemoMode}" Foreground="#E5E7EB" HorizontalAlignment="Right" DockPanel.Dock="Right" />
+                                </DockPanel>
+                            </Border>
+                            <ItemsControl ItemsSource="{Binding Dashboard.Axes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource Card}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="80" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="170" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" Foreground="#E5E7EB" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding Percent, Mode=OneWay}" Height="14" Foreground="#38BDF8" Background="#1E293B" />
+                                                <TextBlock Grid.Column="2" Foreground="#CBD5E1" TextAlignment="Right" VerticalAlignment="Center">
+                                                    <Run Text="raw " /><Run Text="{Binding Raw}" /><Run Text="  norm " /><Run Text="{Binding Normalized}" />
+                                                </TextBlock>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1">
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="Status Flags" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" />
+                                    <ItemsControl ItemsSource="{Binding Dashboard.StatusFlags}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Style="{StaticResource FlagPill}">
+                                                    <TextBlock Text="{Binding Name}" Foreground="#F8FAFC" FontSize="12" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="Counters" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Foreground="#CBD5E1" Margin="0,10,0,0" Text="{Binding Dashboard.SampleCounter, StringFormat=HID sample counter: {0}}" />
+                                    <TextBlock Foreground="#CBD5E1" Text="{Binding Dashboard.FrameCounter, StringFormat=CAN frame counter: {0}}" />
+                                    <TextBlock Foreground="#CBD5E1" Text="{Binding Dashboard.LastReportMs, StringFormat=last_report_ms: {0}}" />
+                                    <TextBlock Foreground="#CBD5E1" Text="{Binding Dashboard.LastReportAge, StringFormat=Last report age: {0}}" />
+                                    <TextBlock Foreground="#CBD5E1" Text="{Binding Dashboard.Hat, StringFormat=Hat: {0}}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="Buttons" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" />
+                                    <ItemsControl ItemsSource="{Binding Dashboard.Buttons}" Margin="0,10,0,0">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Style="{StaticResource ButtonDot}">
+                                                    <TextBlock Text="{Binding Label}" Foreground="#F8FAFC" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Mapping">
+                <ScrollViewer>
+                    <StackPanel Margin="0,12,0,0">
+                        <Border Style="{StaticResource Card}">
+                            <DockPanel>
+                                <TextBlock Text="Editable Axis and Button Mapping" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" />
+                                <Button Content="Reset to Default Mapping" Command="{Binding ResetDefaultsCommand}" DockPanel.Dock="Right" />
+                            </DockPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Axes" Foreground="#F8FAFC" FontWeight="SemiBold" />
+                                <DataGrid ItemsSource="{Binding Mapping.Axes}">
+                                    <DataGrid.Columns>
+                                        <DataGridCheckBoxColumn Header="Enabled" Binding="{Binding Enabled}" />
+                                        <DataGridTextColumn Header="Source" Binding="{Binding Source}" />
+                                        <DataGridTextColumn Header="CAN ID" Binding="{Binding DestinationCanId}" />
+                                        <DataGridTextColumn Header="Signal" Binding="{Binding DestinationSignal}" />
+                                        <DataGridTextColumn Header="Byte" Binding="{Binding ByteOffset}" />
+                                        <DataGridTextColumn Header="Bits" Binding="{Binding BitLength}" />
+                                        <DataGridCheckBoxColumn Header="Signed" Binding="{Binding Signed}" />
+                                        <DataGridCheckBoxColumn Header="Invert" Binding="{Binding Invert}" />
+                                        <DataGridTextColumn Header="Deadzone" Binding="{Binding Deadzone}" />
+                                        <DataGridTextColumn Header="Center" Binding="{Binding CenterOffset}" />
+                                        <DataGridTextColumn Header="In Min" Binding="{Binding InputMin}" />
+                                        <DataGridTextColumn Header="In Max" Binding="{Binding InputMax}" />
+                                        <DataGridTextColumn Header="Out Min" Binding="{Binding OutputMin}" />
+                                        <DataGridTextColumn Header="Out Max" Binding="{Binding OutputMax}" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Buttons" Foreground="#F8FAFC" FontWeight="SemiBold" />
+                                <DataGrid ItemsSource="{Binding Mapping.Buttons}">
+                                    <DataGrid.Columns>
+                                        <DataGridCheckBoxColumn Header="Enabled" Binding="{Binding Enabled}" />
+                                        <DataGridTextColumn Header="Button" Binding="{Binding ButtonIndex}" />
+                                        <DataGridTextColumn Header="CAN ID" Binding="{Binding DestinationCanId}" />
+                                        <DataGridTextColumn Header="Byte" Binding="{Binding ByteOffset}" />
+                                        <DataGridTextColumn Header="Bit" Binding="{Binding BitIndex}" />
+                                        <DataGridCheckBoxColumn Header="Active High" Binding="{Binding ActiveHigh}" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Protocol / CAN">
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.1*" />
+                        <ColumnDefinition Width="1.4*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Receiver-Facing CAN Contract" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock Foreground="#CBD5E1" TextWrapping="Wrap" Margin="0,10,0,0"
+                                       Text="0x301: steer int16 LE, throttle int16 LE, aux0 int8, aux1 int8, button flags, HID sample counter. 0x302: status flags, axis count, HID sample counter, CAN frame counter, last_report_ms uint32 LE." />
+                            <TextBlock Foreground="#CBD5E1" TextWrapping="Wrap" Margin="0,10,0,0"
+                                       Text="Receivers should accept control only when HID Sample Valid is set and Data Stale / USB Disconnected are clear. Treat missing data older than 250 ms as failsafe." />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource Card}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="CAN Log Decoder" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" />
+                            <Button DockPanel.Dock="Top" HorizontalAlignment="Left" Content="Decode" Command="{Binding DecodeCanCommand}" />
+                            <TextBox DockPanel.Dock="Top" Text="{Binding Protocol.DecoderInput, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="105" FontFamily="Consolas" />
+                            <TextBlock DockPanel.Dock="Top" Text="{Binding Protocol.DecodeWarnings}" Foreground="#FBBF24" Margin="4" />
+                            <DataGrid ItemsSource="{Binding Protocol.DecodedRows}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="150" />
+                                    <DataGridTextColumn Header="State" Binding="{Binding State}" Width="90" />
+                                    <DataGridTextColumn Header="Summary" Binding="{Binding Summary}" Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Profiles">
+                <StackPanel Margin="0,12,0,0">
+                    <Border Style="{StaticResource Card}">
+                        <WrapPanel>
+                            <Button Content="New Profile" Command="{Binding NewProfileCommand}" />
+                            <Button Content="Save Profile" Command="{Binding SaveProfileCommand}" />
+                            <Button Content="Load Profile" Command="{Binding LoadProfileCommand}" />
+                            <Button Content="Import JSON" Command="{Binding LoadProfileCommand}" />
+                            <Button Content="Export JSON" Command="{Binding ExportProfileCommand}" />
+                            <Button Content="Reset Defaults" Command="{Binding ResetDefaultsCommand}" />
+                        </WrapPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Profile Validation" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Profiles.ValidationSummary}" Foreground="#CBD5E1" TextWrapping="Wrap" Margin="0,10,0,0" />
+                            <TextBlock Text="Device write is intentionally not implemented yet. Save/export profiles locally until firmware-side persistent config upload exists." Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,14,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Diagnostics">
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="340" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Serial / UART Diagnostics" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock Text="Port" Foreground="#CBD5E1" Margin="4,12,0,0" />
+                            <ComboBox ItemsSource="{Binding Diagnostics.Ports}" SelectedItem="{Binding Diagnostics.SelectedPort}" />
+                            <TextBlock Text="Baud" Foreground="#CBD5E1" Margin="4,8,0,0" />
+                            <ComboBox ItemsSource="{Binding Diagnostics.BaudRates}" SelectedItem="{Binding Diagnostics.BaudRate}" />
+                            <Button Content="Refresh Ports" Command="{Binding RefreshPortsCommand}" />
+                            <Button Content="{Binding Diagnostics.ConnectionLabel}" Command="{Binding ConnectCommand}" />
+                            <TextBlock Text="Paste/test UART line" Foreground="#CBD5E1" Margin="4,16,0,0" />
+                            <TextBox Text="{Binding Diagnostics.ManualLine, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="90" FontFamily="Consolas" />
+                            <Button Content="Parse Line" Command="{Binding AddManualLineCommand}" />
+                            <Button Content="Copy Diagnostics" Command="{Binding CopyDiagnosticsCommand}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource Card}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="Live UART Log" Foreground="#F8FAFC" FontSize="18" FontWeight="SemiBold" />
+                            <ListBox ItemsSource="{Binding Diagnostics.LogLines}" Background="#020617" Foreground="#E5E7EB" FontFamily="Consolas" />
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

@@ -58,6 +58,42 @@ static int16_t map_axis_value(const joystick_can_axis_map_t *map, int16_t raw_va
     return clamp_i16(value, map->output_min, map->output_max);
 }
 
+static uint8_t make_status_flags(const joystick_can_pipeline_state_t *state,
+                                 bool failsafe)
+{
+    uint8_t flags = 0U;
+
+    if (state == NULL) {
+        return JOYSTICK_CAN_STATUS_USB_DISCONNECTED |
+               JOYSTICK_CAN_STATUS_DATA_STALE |
+               JOYSTICK_CAN_STATUS_HID_PARSE_ERROR;
+    }
+
+    if (state->connected) {
+        flags |= JOYSTICK_CAN_STATUS_JOYSTICK_PRESENT;
+    } else {
+        flags |= JOYSTICK_CAN_STATUS_USB_DISCONNECTED;
+    }
+
+    if (state->has_sample && state->sample.valid && !failsafe) {
+        flags |= JOYSTICK_CAN_STATUS_HID_SAMPLE_VALID;
+    }
+
+    if (failsafe || state->sample.stale) {
+        flags |= JOYSTICK_CAN_STATUS_DATA_STALE;
+    }
+
+    if (state->can_tx_backpressure_seen) {
+        flags |= JOYSTICK_CAN_STATUS_TX_BACKPRESSURE_SEEN;
+    }
+
+    if (state->hid_parse_error) {
+        flags |= JOYSTICK_CAN_STATUS_HID_PARSE_ERROR;
+    }
+
+    return flags;
+}
+
 static void write_control_frame(const joystick_can_mapping_table_t *table,
                                 joystick_can_pipeline_state_t *state,
                                 bool failsafe,
@@ -129,9 +165,7 @@ static void write_control_frame(const joystick_can_mapping_table_t *table,
     out_frame->data[4] = (uint8_t)signal_values[JOYSTICK_CAN_SIGNAL_AUX0];
     out_frame->data[5] = (uint8_t)signal_values[JOYSTICK_CAN_SIGNAL_AUX1];
     out_frame->data[6] = button_flags;
-    out_frame->data[7] = (uint8_t)((state->connected ? 0x01U : 0x00U) |
-                                   (failsafe ? 0x02U : 0x00U) |
-                                   ((state->frame_sequence & 0x1FU) << 3U));
+    out_frame->data[7] = (uint8_t)(state->sample.sequence & 0xFFU);
 }
 
 static void write_status_frame(const joystick_can_mapping_table_t *table,
@@ -145,15 +179,16 @@ static void write_status_frame(const joystick_can_mapping_table_t *table,
     out_frame->extended = false;
     out_frame->rtr = false;
     out_frame->dlc = 8U;
-    out_frame->data[0] = (uint8_t)((state->connected ? 0x01U : 0x00U) |
-                                   (failsafe ? 0x02U : 0x00U));
+    out_frame->data[0] = make_status_flags(state, failsafe);
     out_frame->data[1] = state->sample.axis_count;
-    out_frame->data[2] = (uint8_t)(state->last_report_ms & 0xFFU);
-    out_frame->data[3] = (uint8_t)((state->last_report_ms >> 8U) & 0xFFU);
-    out_frame->data[4] = (uint8_t)((state->last_report_ms >> 16U) & 0xFFU);
-    out_frame->data[5] = (uint8_t)((state->last_report_ms >> 24U) & 0xFFU);
-    out_frame->data[6] = (uint8_t)(now_ms & 0xFFU);
-    out_frame->data[7] = (uint8_t)((state->frame_sequence) & 0xFFU);
+    out_frame->data[2] = (uint8_t)(state->sample.sequence & 0xFFU);
+    out_frame->data[3] = (uint8_t)(state->frame_sequence & 0xFFU);
+    out_frame->data[4] = (uint8_t)(state->last_report_ms & 0xFFU);
+    out_frame->data[5] = (uint8_t)((state->last_report_ms >> 8U) & 0xFFU);
+    out_frame->data[6] = (uint8_t)((state->last_report_ms >> 16U) & 0xFFU);
+    out_frame->data[7] = (uint8_t)((state->last_report_ms >> 24U) & 0xFFU);
+
+    (void)now_ms;
 }
 
 void joystick_can_mapping_table_init_default(joystick_can_mapping_table_t *table)
@@ -225,6 +260,7 @@ void joystick_can_pipeline_on_connect(joystick_can_pipeline_state_t *state,
 
     state->connected = true;
     state->failsafe_active = false;
+    state->usb_disconnected = false;
     state->last_report_ms = now_ms;
 }
 
@@ -238,6 +274,7 @@ void joystick_can_pipeline_on_disconnect(joystick_can_pipeline_state_t *state,
     state->connected = false;
     state->failsafe_active = true;
     state->has_sample = false;
+    state->usb_disconnected = true;
     state->last_report_ms = now_ms;
     usb_host_hid_joystick_mark_disconnected(&state->sample, now_ms);
 }
@@ -252,7 +289,30 @@ void joystick_can_pipeline_submit_sample(joystick_can_pipeline_state_t *state,
     state->sample = *sample;
     state->has_sample = sample->valid;
     state->connected = sample->connected;
+    state->usb_disconnected = !sample->connected;
+    if (sample->valid) {
+        state->hid_parse_error = false;
+    }
     state->last_report_ms = sample->timestamp_ms;
+}
+
+void joystick_can_pipeline_note_tx_backpressure(joystick_can_pipeline_state_t *state)
+{
+    if (state == NULL) {
+        return;
+    }
+
+    state->can_tx_backpressure_seen = true;
+    state->can_tx_backpressure_count += 1U;
+}
+
+void joystick_can_pipeline_note_hid_parse_error(joystick_can_pipeline_state_t *state)
+{
+    if (state == NULL) {
+        return;
+    }
+
+    state->hid_parse_error = true;
 }
 
 bool joystick_can_pipeline_is_failsafe(const joystick_can_mapping_table_t *table,
