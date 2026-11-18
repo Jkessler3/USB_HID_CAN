@@ -110,6 +110,8 @@ USBH_StatusTypeDef USBH_LL_Connect(USBH_HandleTypeDef *phost);
 USBH_StatusTypeDef USBH_LL_Disconnect(USBH_HandleTypeDef *phost);
 USBH_SpeedTypeDef  USBH_LL_GetSpeed(USBH_HandleTypeDef *phost);
 USBH_StatusTypeDef USBH_LL_ResetPort(USBH_HandleTypeDef *phost);
+void               USBH_LL_SetPortReset(USBH_HandleTypeDef *phost, uint8_t asserted);
+uint32_t           USBH_LL_GetTick(void);
 uint32_t           USBH_LL_GetLastXferSize(USBH_HandleTypeDef *phost, uint8_t pipe);
 
 USBH_StatusTypeDef USBH_LL_DriverVBUS(USBH_HandleTypeDef *phost, uint8_t state);

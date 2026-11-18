@@ -295,6 +295,6 @@ void usb_host_hid_joystick_apply_stale_timeout(const usb_host_hid_device_info_t 
     if (usb_host_hid_joystick_is_stale(info, now_ms)) {
         state->stale = true;
         state->valid = false;
-        state->connected = false;
+        state->connected = info != NULL && info->connected;
     }
 }

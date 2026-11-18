@@ -142,7 +142,10 @@ USBH_StatusTypeDef USBH_Get_CfgDesc(USBH_HandleTypeDef *phost, uint16_t length)
 
   if (status == USBH_OK)
   {
-    /* Commands successfully sent and Response Received  */
+    if (USBH_LL_GetLastXferSize(phost, phost->Control.pipe_in) != length)
+    {
+      return USBH_NOT_SUPPORTED;
+    }
     status = USBH_ParseCfgDesc(phost, pData, length);
   }
 
@@ -428,109 +431,91 @@ static USBH_StatusTypeDef USBH_ParseDevDesc(USBH_HandleTypeDef *phost, uint8_t *
   */
 static USBH_StatusTypeDef USBH_ParseCfgDesc(USBH_HandleTypeDef *phost, uint8_t *buf, uint16_t length)
 {
-  USBH_CfgDescTypeDef *cfg_desc = &phost->device.CfgDesc;
-  USBH_StatusTypeDef           status = USBH_OK;
-  USBH_InterfaceDescTypeDef    *pif;
-  USBH_EpDescTypeDef           *pep;
-  USBH_DescHeader_t            *pdesc;
-  uint16_t                     ptr;
-  uint8_t                      if_ix = 0U;
-  uint8_t                      ep_ix = 0U;
+  USBH_CfgDescTypeDef *cfg = &phost->device.CfgDesc;
+  USBH_InterfaceDescTypeDef *interface = NULL;
+  uint8_t interfaces = 0U;
+  uint8_t endpoints = 0U;
+  uint8_t expected_endpoints = 0U;
 
-  if (buf == NULL)
+  if (buf == NULL || length < USB_CONFIGURATION_DESC_SIZE ||
+      buf[0] != USB_CONFIGURATION_DESC_SIZE || buf[1] != USB_DESC_TYPE_CONFIGURATION)
   {
-    return USBH_FAIL;
+    return USBH_NOT_SUPPORTED;
   }
-
-  pdesc = (USBH_DescHeader_t *)(void *)buf;
-
-  /* Make sure that the Configuration descriptor's bLength is equal to USB_CONFIGURATION_DESC_SIZE */
-  if (pdesc->bLength != USB_CONFIGURATION_DESC_SIZE)
+  const uint16_t total = LE16(buf + 2U);
+  if (total < USB_CONFIGURATION_DESC_SIZE || total > sizeof(phost->device.CfgDesc_Raw) ||
+      buf[4] == 0U || buf[4] > USBH_MAX_NUM_INTERFACES)
   {
-    pdesc->bLength = USB_CONFIGURATION_DESC_SIZE;
+    return USBH_NOT_SUPPORTED;
   }
+  cfg->bLength = buf[0];
+  cfg->bDescriptorType = buf[1];
+  cfg->wTotalLength = total;
+  cfg->bNumInterfaces = buf[4];
+  cfg->bConfigurationValue = buf[5];
+  cfg->iConfiguration = buf[6];
+  cfg->bmAttributes = buf[7];
+  cfg->bMaxPower = buf[8];
 
-  /* Parse configuration descriptor */
-  cfg_desc->bLength             = *(uint8_t *)(buf + 0U);
-  cfg_desc->bDescriptorType     = *(uint8_t *)(buf + 1U);
-  cfg_desc->wTotalLength        = MIN(((uint16_t) LE16(buf + 2U)), ((uint16_t)USBH_MAX_SIZE_CONFIGURATION));
-  cfg_desc->bNumInterfaces      = *(uint8_t *)(buf + 4U);
-  cfg_desc->bConfigurationValue = *(uint8_t *)(buf + 5U);
-  cfg_desc->iConfiguration      = *(uint8_t *)(buf + 6U);
-  cfg_desc->bmAttributes        = *(uint8_t *)(buf + 7U);
-  cfg_desc->bMaxPower           = *(uint8_t *)(buf + 8U);
-
-  if (length > USB_CONFIGURATION_DESC_SIZE)
+  /* Enumeration first requests just the header, then the complete descriptor. */
+  if (length == USB_CONFIGURATION_DESC_SIZE && total > length)
   {
-    ptr = USB_LEN_CFG_DESC;
-    pif = (USBH_InterfaceDescTypeDef *)NULL;
-
-    while ((if_ix < USBH_MAX_NUM_INTERFACES) && (ptr < cfg_desc->wTotalLength))
-    {
-      pdesc = USBH_GetNextDesc((uint8_t *)(void *)pdesc, &ptr);
-      if (pdesc->bDescriptorType == USB_DESC_TYPE_INTERFACE)
-      {
-        /* Make sure that the interface descriptor's bLength is equal to USB_INTERFACE_DESC_SIZE */
-        if (pdesc->bLength != USB_INTERFACE_DESC_SIZE)
-        {
-          pdesc->bLength = USB_INTERFACE_DESC_SIZE;
-        }
-
-        pif = &cfg_desc->Itf_Desc[if_ix];
-        USBH_ParseInterfaceDesc(pif, (uint8_t *)(void *)pdesc);
-
-        ep_ix = 0U;
-        pep = (USBH_EpDescTypeDef *)NULL;
-
-        while ((ep_ix < USBH_MAX_NUM_ENDPOINTS) && (ep_ix < pif->bNumEndpoints) && (ptr < cfg_desc->wTotalLength))
-        {
-          pdesc = USBH_GetNextDesc((uint8_t *)(void *)pdesc, &ptr);
-
-          if (pdesc->bDescriptorType == USB_DESC_TYPE_ENDPOINT)
-          {
-            /* Check if the endpoint is appartening to an audio streaming interface */
-            if ((pif->bInterfaceClass == 0x01U) &&
-                ((pif->bInterfaceSubClass == 0x02U) || (pif->bInterfaceSubClass == 0x03U)))
-            {
-              /* Check if it is supporting the USB AUDIO 01 class specification */
-              if ((pif->bInterfaceProtocol == 0x00U) && (pdesc->bLength != 0x09U))
-              {
-                pdesc->bLength = 0x09U;
-              }
-            }
-            /* Make sure that the endpoint descriptor's bLength is equal to
-               USB_ENDPOINT_DESC_SIZE for all other endpoints types */
-            else
-            {
-              pdesc->bLength = USB_ENDPOINT_DESC_SIZE;
-            }
-
-            pep = &cfg_desc->Itf_Desc[if_ix].Ep_Desc[ep_ix];
-
-            status = USBH_ParseEPDesc(phost, pep, (uint8_t *)(void *)pdesc);
-
-            ep_ix++;
-          }
-        }
-
-        /* Check if the required endpoint(s) data are parsed */
-        if (ep_ix < pif->bNumEndpoints)
-        {
-          return USBH_NOT_SUPPORTED;
-        }
-
-        if_ix++;
-      }
-    }
-
-    /* Check if the required interface(s) data are parsed */
-    if (if_ix < MIN(cfg_desc->bNumInterfaces, (uint8_t)USBH_MAX_NUM_INTERFACES))
+    return USBH_OK;
+  }
+  if (length != total)
+  {
+    return USBH_NOT_SUPPORTED;
+  }
+  USBH_memset(cfg->Itf_Desc, 0, sizeof(cfg->Itf_Desc));
+  for (uint16_t offset = USB_CONFIGURATION_DESC_SIZE; offset < total; )
+  {
+    uint8_t *item = &buf[offset];
+    const uint16_t remaining = total - offset;
+    if (remaining < 2U || item[0] < 2U || item[0] > remaining)
     {
       return USBH_NOT_SUPPORTED;
     }
+    if (item[1] == USB_DESC_TYPE_INTERFACE)
+    {
+      if (item[0] < USB_INTERFACE_DESC_SIZE || endpoints != expected_endpoints)
+      {
+        return USBH_NOT_SUPPORTED;
+      }
+      interface = NULL;
+      endpoints = 0U;
+      expected_endpoints = item[4];
+      if (item[3] == 0U) /* SET_CONFIGURATION activates alternate setting zero. */
+      {
+        if (interfaces == cfg->bNumInterfaces || expected_endpoints > USBH_MAX_NUM_ENDPOINTS)
+        {
+          return USBH_NOT_SUPPORTED;
+        }
+        for (uint8_t i = 0U; i < interfaces; ++i)
+        {
+          if (cfg->Itf_Desc[i].bInterfaceNumber == item[2])
+          {
+            return USBH_NOT_SUPPORTED;
+          }
+        }
+        interface = &cfg->Itf_Desc[interfaces++];
+        USBH_ParseInterfaceDesc(interface, item);
+      }
+    }
+    else if (item[1] == USB_DESC_TYPE_ENDPOINT)
+    {
+      if (item[0] < USB_ENDPOINT_DESC_SIZE || endpoints >= expected_endpoints)
+      {
+        return USBH_NOT_SUPPORTED;
+      }
+      if (interface != NULL && USBH_ParseEPDesc(phost, &interface->Ep_Desc[endpoints], item) != USBH_OK)
+      {
+        return USBH_NOT_SUPPORTED;
+      }
+      ++endpoints;
+    }
+    offset += item[0];
   }
-
-  return status;
+  return interfaces == cfg->bNumInterfaces && endpoints == expected_endpoints ? USBH_OK : USBH_NOT_SUPPORTED;
 }
 
 

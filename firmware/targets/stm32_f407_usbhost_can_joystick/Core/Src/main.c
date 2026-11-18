@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "../../App/joystick_translator_app.h"
+#include "../../App/joystick_uart_trace.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -60,10 +61,6 @@ void MX_USB_HOST_Process(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
-{
-  joystick_translator_app_on_hid_report(phost);
-}
 /* USER CODE END 0 */
 
 /**
@@ -85,7 +82,7 @@ int main(void)
   /* USER CODE BEGIN Init */
   MX_USART2_UART_Init();
   joystick_translator_app_bind_uart(&huart2);
-  HAL_UART_Transmit(&huart2, (uint8_t *)"UART early HSI\r\n", 16U, 100U);
+  JOYSTICK_TRACE_PRINTF("UART early HSI\r\n");
 
   /* USER CODE END Init */
 
@@ -93,19 +90,21 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-  HAL_UART_Transmit(&huart2, (uint8_t *)"Clock config done\r\n", 19U, 100U);
+  /* APB1 changed from HSI to PLL. Update BRR before sending startup diagnostics. */
+  MX_USART2_UART_Init();
+  JOYSTICK_TRACE_PRINTF("Clock config done\r\n");
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  HAL_UART_Transmit(&huart2, (uint8_t *)"GPIO init OK\r\n", 14U, 100U);
+  JOYSTICK_TRACE_PRINTF("GPIO init OK\r\n");
   MX_USB_HOST_Init();
-  HAL_UART_Transmit(&huart2, (uint8_t *)"USB host init OK\r\n", 18U, 100U);
+  JOYSTICK_TRACE_PRINTF("USB host init OK\r\n");
   MX_USART2_UART_Init();
-  HAL_UART_Transmit(&huart2, (uint8_t *)"UART re-init OK\r\n", 16U, 100U);
+  JOYSTICK_TRACE_PRINTF("UART re-init OK\r\n");
   MX_CAN1_Init();
-  HAL_UART_Transmit(&huart2, (uint8_t *)"CAN init OK\r\n", 13U, 100U);
+  JOYSTICK_TRACE_PRINTF("CAN init OK\r\n");
   /* USER CODE BEGIN 2 */
   joystick_translator_app_init(&hcan1,
                                &huart2,
@@ -154,7 +153,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLQ = 7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
-    HAL_UART_Transmit(&huart2, (uint8_t *)"CLOCK osc fail\r\n", 16U, 100U);
+    if ((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) == 0U) {
+      HAL_UART_Transmit(&huart2, (uint8_t *)"CLOCK osc fail\r\n", 16U, 100U);
+    }
     return;
   }
 
@@ -169,7 +170,9 @@ void SystemClock_Config(void)
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
   {
-    HAL_UART_Transmit(&huart2, (uint8_t *)"CLOCK cfg fail\r\n", 16U, 100U);
+    if ((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) == 0U) {
+      HAL_UART_Transmit(&huart2, (uint8_t *)"CLOCK cfg fail\r\n", 16U, 100U);
+    }
     return;
   }
 }
@@ -294,7 +297,9 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  HAL_UART_Transmit(&huart2, (uint8_t *)"ERROR handler\r\n", 15U, 100U);
+  if ((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) == 0U) {
+    HAL_UART_Transmit(&huart2, (uint8_t *)"ERROR handler\r\n", 15U, 100U);
+  }
   __disable_irq();
   while (1)
   {

@@ -302,6 +302,9 @@ USBH_StatusTypeDef USBH_HID_SetIdle(USBH_HandleTypeDef *phost,
 USBH_StatusTypeDef USBH_HID_SetProtocol(USBH_HandleTypeDef *phost,
                                         uint8_t protocol);
 
+/* The data is valid only during the callback. Input length is the actual transfer size. */
+void USBH_HID_ReportDescriptorCallback(USBH_HandleTypeDef *phost, const uint8_t *data, uint16_t length);
+void USBH_HID_InputReportCallback(USBH_HandleTypeDef *phost, const uint8_t *data, uint16_t length);
 void USBH_HID_EventCallback(USBH_HandleTypeDef *phost);
 
 HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost);

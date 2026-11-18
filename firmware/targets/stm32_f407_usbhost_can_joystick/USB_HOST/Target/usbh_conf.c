@@ -23,7 +23,7 @@
 #include "usbh_platform.h"
 
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
+#include "../../App/joystick_uart_trace.h"
 
 /* USER CODE END Includes */
 
@@ -43,6 +43,32 @@ HCD_HandleTypeDef hhcd_USB_OTG_FS;
 void Error_Handler(void);
 
 /* USER CODE BEGIN 0 */
+
+uint32_t USBH_LL_GetTick(void)
+{
+  /* SOF may stop while the port is held in reset. */
+  return HAL_GetTick();
+}
+
+void USBH_LL_SetPortReset(USBH_HandleTypeDef *phost, uint8_t asserted)
+{
+  const HCD_HandleTypeDef *hcd = phost->pData;
+  volatile uint32_t *port = (volatile uint32_t *)((uintptr_t)hcd->Instance + USB_OTG_HOST_PORT_BASE);
+  uint32_t primask = __get_PRIMASK();
+  uint32_t value;
+
+  /* HCD_Port_IRQHandler also modifies HPRT. Preserve port power and avoid
+     acknowledging change flags or disabling the port when writing PRST. */
+  __disable_irq();
+  value = *port & ~(USB_OTG_HPRT_PRST | USB_OTG_HPRT_PENA | USB_OTG_HPRT_PCDET |
+                    USB_OTG_HPRT_PENCHNG | USB_OTG_HPRT_POCCHNG);
+  if (asserted != 0U)
+  {
+    value |= USB_OTG_HPRT_PRST;
+  }
+  *port = value;
+  __set_PRIMASK(primask);
+}
 
 /* USER CODE END 0 */
 
@@ -472,8 +498,9 @@ USBH_StatusTypeDef USBH_LL_DriverVBUS(USBH_HandleTypeDef *phost, uint8_t state)
     uint32_t now = HAL_GetTick();
     g_usb_vbus_diag_calls++;
 
-    if ((((uint32_t)state) != g_usb_vbus_diag_last_state) ||
-        ((now - g_usb_vbus_diag_last_tick) >= 1000U)) {
+    if (joystick_uart_trace_enabled() &&
+        ((((uint32_t)state) != g_usb_vbus_diag_last_state) ||
+         ((now - g_usb_vbus_diag_last_tick) >= 1000U))) {
       GPIO_PinState pc9_level = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9);
       uint32_t host_g = (phost != NULL) ? (uint32_t)phost->gState : 0xFFFFFFFFU;
       uint32_t host_enum = (phost != NULL) ? (uint32_t)phost->EnumState : 0xFFFFFFFFU;

@@ -9,11 +9,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
-$buildDir = Join-Path $repoRoot "firmware\targets\$Target\$Config"
+$targetDir = Join-Path $repoRoot "firmware\targets\$Target"
+$recipe = Join-Path $targetDir "Makefile.cli"
+$buildDir = Join-Path $targetDir $Config
 
-if (-not (Test-Path $buildDir)) {
-    Write-Error "Build directory not found: $buildDir"
+if (-not (Test-Path -LiteralPath $recipe -PathType Leaf)) {
+    throw "No CLI build recipe for target $Target at $recipe"
 }
+[void][System.IO.Directory]::CreateDirectory($buildDir)
 
 function Resolve-ToolCommand {
     param(
@@ -190,13 +193,13 @@ Write-Host "Using gcc : $gccCmd"
 Push-Location $buildDir
 try {
     if ($Clean) {
-        & $makeCmd clean
+        & $makeCmd -f ../Makefile.cli "CONFIG=$Config" clean
         if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
         }
     }
 
-    & $makeCmd all
+    & $makeCmd -f ../Makefile.cli "CONFIG=$Config" all
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }

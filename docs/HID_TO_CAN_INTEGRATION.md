@@ -1,6 +1,6 @@
 # HID-to-CAN Integration
 
-Snapshot date: 2026-04-28
+Historical integration snapshot, 2026-04-28. Use [BRINGUP.md](BRINGUP.md) and [CANAEROSPACE_PROTOCOL.md](CANAEROSPACE_PROTOCOL.md) for the present source and receiver acceptance.
 
 ## Transport Baseline Checkpoint
 
@@ -37,10 +37,10 @@ The production-facing CAN path is signal-based rather than a raw UART-packet mir
 
 | CAN ID | Purpose | Payload |
 | --- | --- | --- |
-| `0x301` | Control | steer int16 LE, throttle int16 LE, aux0, aux1, button flags, HID sample counter |
-| `0x302` | Status | validity/stale/error flags, axis count, HID sample counter, CAN frame counter, last HID report timestamp |
+| `1500 / 0x5DC` | CANaerospace Axis X/Y | Node-ID, Data Type, Service Code, Message Code, X/Y as big-endian `USHORT2` |
+| `1501..1506 / 0x5DD..0x5E2` | CANaerospace joystick parameters | Remaining axes, buttons, and status using CANaerospace DLC-8 headers |
 
-The frozen protocol contract is documented in `docs/CAN_PROTOCOL.md`.
+The frozen protocol contract is documented in `docs/CANAEROSPACE_PROTOCOL.md`.
 The default mapping is defined in `firmware/shared/mapping/src/joystick_can_mapping.c`.
 
 ## Bench Validation Checklist
@@ -50,8 +50,8 @@ Minimum pass conditions for Phase 3:
 - USB joystick/gamepad enumerates as HID.
 - Moving X/Y changes decoded axis values in UART logs.
 - Button presses produce stable bit transitions in UART logs.
-- CAN ID `0x301` changes with the same axes/buttons seen in UART logs.
-- CAN ID `0x302` reports connected and non-failsafe while HID reports are fresh.
+- CAN IDs `1500..1506` / `0x5DC..0x5E2` change with the same axes/buttons seen in UART logs.
+- Service Code is `0x00` while HID reports are fresh and carries stale/disconnect/error bits during faults.
 - Disconnect or stale HID input forces neutral/failsafe output.
 - Debug build runs for 10-15 minutes without CAN TX stalls or UART lockups.
 

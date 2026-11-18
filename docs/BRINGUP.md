@@ -1,91 +1,22 @@
-# Bring-Up Checklist
+# Standalone translator bring-up
 
-This checklist is for the active standalone translator target:
+The target is `firmware/targets/stm32_f407_usbhost_can_joystick`. Use [CLI build instructions](CLI_BUILD.md) and [regeneration rules](REGEN_RULES.md) for the exact firmware being qualified. Record the firmware revision, local changes, PCB revision, joystick model, descriptor, receiver version and test equipment with each capture.
 
-- USB joystick (host) -> STM32F407 -> CAN
-- Target path: `firmware/targets/stm32_f407_usbhost_can_joystick`
+## Before board power
 
-## 1) Preconditions
+1. Identify the board revision and inspect its condition, connector population and host data path against the schematic. Verify continuity for the intended USB host port. Distinguish the USB-A interface from J1 USB-C.
+2. Verify the RJ11 pin numbering, supply voltage and polarity, ground, CAN H/L, transceiver wiring, termination, USB host VBUS source/current limit and protection against the board revision and receiver cable. Check continuity and idle resistance unpowered. Apply current-limited power and record rail and host VBUS measurements before attaching a joystick.
+3. Check connector alignment, clearances, strain relief and enclosure fit in the specified TEKO Tekal 1. Record any temporary wiring and repeat electrical and mechanical qualification on the production configuration.
+4. Confirm bxCAN1 PB8/PB9, USB OTG FS host and SWD against the generated project. The default `USBH_HAS_VBUS_SWITCH=0` depends on the board providing VBUS separately.
 
-- Regenerated target keeps `USB_OTG_FS` in host mode with HID class enabled.
-- `CAN1` remains enabled with RX interrupt path.
-- External hardware is present:
-  - USB connector + valid 5V VBUS switching path
-  - CAN transceiver wired to `PB8/PB9`
-  - Correct CAN bus termination
+## USB and CAN acceptance
 
-If the board has no GPIO-controlled VBUS switch, keep `USBH_HAS_VBUS_SWITCH` at `0` in:
+- If CAN initialization or start fails at power-up, correct the startup condition and reset the board. Test startup separately from a running bus losing its acknowledgment peer.
+- Begin a timestamped external CAN capture before connecting USB. Check bus speed with the agreed receiver, standard 11-bit IDs 1500–1506 (0x5DC–0x5E2), DLC 8, node, frame intervals and independent message counters. The sender advances counters at controller enqueue. Record CAN acknowledgments, bus load, errors and worst-case frame gaps separately.
+- Record the joystick's VID/PID, interface, report descriptor, endpoint size/interval and raw reports. Exercise stationary holds beyond the stale interval, all available axes at both ends and center, the hat and individual buttons. Correlate inputs to the actual wire bytes. An omitted axis is centered and an omitted button is clear. See the [supported HID layouts](../firmware/shared/usb_host_hid/README.md).
+- Exercise startup with no device, attachment, enumeration, a short or unsupported report on a fixture, input silence, unplug and reconnect. Compare all four axis pairs and both button banks before and after each transition. The default failsafe centers all axes at 0x8000 and clears buttons. Check the service byte for stale, disconnected, parse error and presence independently. Confirm recovery on fresh input. Record CAN continuity during reset and enumeration with the configured debug output.
+- Capture buttons 0, 7, 8, 31, 32 and 63 where available, with a fixture for controls absent from the joystick. The current transmitter uses BLONG and big-endian payloads. A later requirement specifies UCHAR4. Obtain the receiver type, byte order and accepted vectors before selecting a production button format. See the [current wire mapping](CANAEROSPACE_PROTOCOL.md).
+- Add malformed input, CAN congestion, missing acknowledgment and recovery on an isolated bus. Verify neutral frames after invalidation, the backpressure indication after a missed enqueue and wraparound of counters. Agree receiver timeout and maximum frame gap, then measure with and without UART diagnostics over a sustained run.
+- Replay known captures in the Windows mapper, apply a remapped profile, and compare its offline preview and decoded fields with the expected outputs. Pasted data does not establish live adapter operation or program the device.
 
-- `firmware/targets/stm32_f407_usbhost_can_joystick/USB_HOST/Target/usbh_platform.h`
-
-This makes `MX_DriverVbusFS()` a no-op so `USBH_LL_DriverVBUS()` will not toggle a nonexistent switch pin.
-
-## 1.1) Post-Regeneration Sanity Checks
-
-- Target still builds from `firmware/targets/stm32_f407_usbhost_can_joystick`.
-- `.ioc` still has `USB_OTG_FS.VirtualMode=Host_Only`.
-- `.ioc` still has `USB_HOST.VirtualModeFS=Hid`.
-- `.ioc` keeps `CAN1` enabled on `PB8/PB9`.
-- `.ioc` keeps `SYS` debug on SWD (`PA13/PA14`).
-- `.ioc` does not introduce `PA9` USB VBUS sensing in active pinout.
-- Regenerated `main.c` still calls:
-  - `MX_USB_HOST_Init()`
-  - `MX_CAN1_Init()`
-  - `HAL_CAN_Start()`
-  - `HAL_CAN_ActivateNotification(...CAN_IT_RX_FIFO0_MSG_PENDING...)`
-
-## 2) Shared Module Configuration
-
-1. Configure HID layout parser:
-   - `usb_host_hid_report_layout_t` in `firmware/shared/usb_host_hid`
-   - set report ID policy, axis fields, button/hat offsets for target joystick
-2. Configure mapping:
-   - `joystick_can_mapping_table_t` in `firmware/shared/mapping`
-   - confirm axis maps, button maps, CAN IDs, and periods
-
-## 3) App-Level Integration (USER CODE blocks only in generated files)
-
-1. Initialize pipeline state in app layer:
-   - `usb_host_hid_device_info_t`
-   - `usb_host_hid_joystick_state_t`
-   - `joystick_can_pipeline_state_t`
-2. On USB events:
-   - connection -> `usb_host_hid_on_connection`, `joystick_can_pipeline_on_connect`
-   - disconnection -> `usb_host_hid_on_disconnection`, `joystick_can_pipeline_on_disconnect`
-   - class active -> `usb_host_hid_on_class_active`
-3. On HID input report:
-   - `usb_host_hid_on_report`
-   - `usb_host_hid_parse_report`
-   - `usb_host_hid_joystick_apply_stale_timeout`
-   - `joystick_can_pipeline_submit_sample`
-4. In main loop:
-   - call `joystick_can_pipeline_build_next_frame(...)`
-   - transmit resulting `can_frame_t` through target CAN TX function
-
-## 4) Hardware Validation Sequence
-
-1. Power board with CAN transceiver connected.
-2. Connect joystick to USB host port.
-3. Confirm host state transitions (`connect` -> `class selected` -> `class active`).
-4. Verify HID reports update joystick state (axes/buttons changing).
-5. Verify control frame period on CAN bus.
-6. Unplug joystick and verify failsafe frames are emitted.
-
-## 5) Expected Baseline Behavior
-
-- Before first valid HID report: failsafe active, neutral CAN outputs.
-- With valid fresh reports: control frames at configured fixed rate.
-- On disconnect or stale input timeout: immediate neutral command frames + failsafe flag.
-
-## 6) Minimal Proof-of-Function Path
-
-1. Confirm USB host detect messages:
-   - connect/disconnect
-   - class selected
-   - VID/PID
-   - HID report length / poll interval
-2. Confirm raw HID bytes are printed from callback and latest report state is updated.
-3. Confirm fixed-rate CAN proof frame is present on bus:
-   - ID `0x321`
-   - marker bytes `A5 5A`
-   - payload includes USB/HID state fields.
+Keep the raw descriptor, labeled USB/UART and receiver-side CAN traces, power measurements and enclosure photos together. Host regressions and successful links can be reproduced without a board. Hardware acceptance requires these observations on the identified assembly.

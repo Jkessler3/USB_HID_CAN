@@ -1,5 +1,7 @@
 # Firmware Gaps (Post-Regeneration)
 
+This March 2026 note records earlier gaps. See [current bring-up](BRINGUP.md), [the supported HID layouts](../firmware/shared/usb_host_hid/README.md) and [current CAN frames](CANAEROSPACE_PROTOCOL.md) for the implemented behavior and outstanding bench work.
+
 Status date: 2026-03-09  
 Scope: active path only (`stm32_f407_usbhost_can_joystick`)
 
@@ -13,7 +15,7 @@ Scope: active path only (`stm32_f407_usbhost_can_joystick`)
 
 ## 2) Final CAN Payload Layout
 
-- `joystick_can_pipeline_build_next_frame()` currently emits a skeleton control/status payload.
+- `joystick_can_pipeline_build_next_frame()` now emits CANaerospace joystick parameters. Remaining protocol work should focus on bench validation against the receiver and any client-assigned identifier changes.
 - Exact RC controller contract is still pending:
   - final byte/bit assignments
   - signed scaling and units per channel

@@ -21,11 +21,13 @@ Generated or generated-adjacent (edit only in USER CODE blocks when possible):
 - `firmware/targets/stm32_f407_usbhost_can_joystick/Middlewares/*`
 - `firmware/targets/stm32_f407_usbhost_can_joystick/stm32_f407_usbhost_can_joystick.ioc`
 
-Current known exception (intentional):
+Preserve the following target changes on any STM32Cube regeneration:
 
-- `firmware/targets/stm32_f407_usbhost_can_joystick/Middlewares/ST/STM32_USB_Host_Library/Class/HID/Src/usbh_hid.c`
-  - Reason: stock ST HID class only accepts boot keyboard/mouse interfaces; this project requires generic HID joystick/gamepad support.
-  - Impact: this file can be overwritten by middleware regeneration/update and must be re-applied if replaced.
+- USB Host Class/HID sources and headers select the supported HID interface, retain the report descriptor and propagate the actual interrupt transfer length.
+- USB Host Core sources and headers bound configuration parsing and advance attach/reset/recovery from elapsed time. The platform hooks in USB_HOST/Target/usbh_conf.c implement reset edges and the monotonic tick.
+- The target project metadata links the shared sources. The CLI uses the checked-in Makefile.cli.
+
+Review the regenerated diff and rerun the host regressions and clean ARM build before accepting updated middleware.
 
 User-owned files (safe for full edits):
 

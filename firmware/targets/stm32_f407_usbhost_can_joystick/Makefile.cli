@@ -1,0 +1,67 @@
+# CLI build for the STM32F407 joystick target. Run from its Debug or Release directory.
+TARGET := stm32_f407_usbhost_can_joystick
+USB_LIB := Middlewares/ST/STM32_USB_Host_Library
+HAL_DIR := Drivers/STM32F4xx_HAL_Driver
+TARGET_DIRS := App Core/Src USB_HOST/App USB_HOST/Target $(USB_LIB)/Core/Src $(USB_LIB)/Class/HID/Src
+SHARED_DIRS := $(addsuffix /src,$(addprefix shared/,can core mapping usb_host_hid))
+HAL_SOURCES := stm32f4xx_hal stm32f4xx_hal_can stm32f4xx_hal_cortex stm32f4xx_hal_dma \
+               stm32f4xx_hal_dma_ex stm32f4xx_hal_exti stm32f4xx_hal_flash stm32f4xx_hal_flash_ex \
+               stm32f4xx_hal_flash_ramfunc stm32f4xx_hal_gpio stm32f4xx_hal_hcd stm32f4xx_hal_pwr \
+               stm32f4xx_hal_pwr_ex stm32f4xx_hal_rcc stm32f4xx_hal_rcc_ex stm32f4xx_hal_uart stm32f4xx_ll_usb
+TARGET_SOURCES := $(foreach dir,$(TARGET_DIRS),$(wildcard ../$(dir)/*.c))
+SHARED_SOURCES := $(foreach dir,$(SHARED_DIRS),$(wildcard ../../../$(dir)/*.c))
+TARGET_OBJECTS := $(patsubst ../%.c,%.o,$(TARGET_SOURCES)) $(addprefix $(HAL_DIR)/Src/,$(addsuffix .o,$(HAL_SOURCES)))
+SHARED_OBJECTS := $(patsubst ../../../%.c,%.o,$(SHARED_SOURCES))
+OBJECTS := $(TARGET_OBJECTS) Core/Startup/startup_stm32f407vgtx.o $(SHARED_OBJECTS)
+ELF := $(TARGET).elf
+LD_SCRIPT := ../STM32F407VGTX_FLASH.ld
+CPU := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+INCLUDES := $(addprefix -I../,App Core/Inc USB_HOST/App USB_HOST/Target $(HAL_DIR)/Inc $(HAL_DIR)/Inc/Legacy \
+            $(USB_LIB)/Core/Inc $(USB_LIB)/Class/HID/Inc Drivers/CMSIS/Device/ST/STM32F4xx/Include Drivers/CMSIS/Include) \
+            $(patsubst %/src,-I../../../%/include,$(SHARED_DIRS))
+CONFIG ?= Debug
+ifeq ($(CONFIG),Debug)
+MODE_FLAGS := -O0 -g3 -DDEBUG
+else ifeq ($(CONFIG),Release)
+MODE_FLAGS := -Os -g1 -DNDEBUG
+else
+$(error Unsupported CONFIG=$(CONFIG))
+endif
+ifneq ($(JOYSTICK_UART_TRACE),)
+ifneq ($(JOYSTICK_UART_TRACE),0)
+ifneq ($(JOYSTICK_UART_TRACE),1)
+$(error JOYSTICK_UART_TRACE must be 0 or 1)
+endif
+endif
+MODE_FLAGS += -DJOYSTICK_UART_TRACE=$(JOYSTICK_UART_TRACE)
+endif
+CFLAGS := $(CPU) $(MODE_FLAGS) -std=gnu11 -DUSE_HAL_DRIVER -DSTM32F407xx $(INCLUDES) -Wall \
+          -ffunction-sections -fdata-sections -fstack-usage --specs=nano.specs -MMD -MP
+RECIPE := ../Makefile.cli
+.PHONY: all clean
+all: $(ELF) $(TARGET).list
+	arm-none-eabi-size $(ELF)
+
+$(ELF): $(OBJECTS) $(LD_SCRIPT) $(RECIPE)
+	arm-none-eabi-gcc $(CPU) -T"$(LD_SCRIPT)" --specs=nosys.specs --specs=nano.specs -static \
+		-Wl,--gc-sections,-Map=$(TARGET).map -o "$@" $(OBJECTS) -Wl,--start-group -lc -lm -Wl,--end-group
+
+$(TARGET).list: $(ELF)
+	arm-none-eabi-objdump -h -S "$<" > "$@"
+
+$(SHARED_OBJECTS): %.o: ../../../%.c $(RECIPE)
+	@mkdir -p "$(@D)"
+	arm-none-eabi-gcc $(CFLAGS) -c "$<" -o "$@"
+
+$(TARGET_OBJECTS): %.o: ../%.c $(RECIPE)
+	@mkdir -p "$(@D)"
+	arm-none-eabi-gcc $(CFLAGS) -c "$<" -o "$@"
+
+Core/Startup/%.o: ../Core/Startup/%.s $(RECIPE)
+	@mkdir -p "$(@D)"
+	arm-none-eabi-gcc $(CPU) $(MODE_FLAGS) -x assembler-with-cpp -MMD -MP -c "$<" -o "$@"
+
+clean:
+	$(RM) $(ELF) $(TARGET).map $(TARGET).list $(OBJECTS) $(OBJECTS:.o=.d) $(OBJECTS:.o=.su)
+
+-include $(OBJECTS:.o=.d)

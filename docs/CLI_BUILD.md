@@ -1,6 +1,6 @@
 # CLI Build (No STM32CubeIDE UI)
 
-Use PowerShell scripts that call the Cube-generated `makefile` under the target `Debug/` or `Release/` folder.
+The Windows CLI builds the checked-in sources with the target’s `Makefile.cli`. Output goes under `Debug/` or `Release/`. A fresh checkout needs no CubeMX generation or pre-existing objects. The STM32CubeIDE 1.19 GNU Arm 13.3 toolchain and bundled GNU make supply the compiler, mkdir and rm. Select the optimized build with `-Config Release`.
 
 ## Build
 

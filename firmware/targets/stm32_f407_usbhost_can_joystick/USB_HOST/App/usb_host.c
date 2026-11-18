@@ -25,7 +25,7 @@
 #include "usbh_hid.h"
 
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
+#include "../../App/joystick_uart_trace.h"
 
 /* USER CODE END Includes */
 
@@ -101,6 +101,7 @@ static void USBH_DebugUpdate(USBH_HandleTypeDef *phost, ApplicationTypeDef app_s
 
 static void USBH_LogSnapshot(USBH_HandleTypeDef *phost, const char *tag)
 {
+  if (!joystick_uart_trace_enabled()) { return; }
   if (phost == NULL) {
     printf("USB DBG %s t=%lu null host\r\n", tag, HAL_GetTick());
     return;
@@ -122,6 +123,7 @@ static void USBH_LogSnapshot(USBH_HandleTypeDef *phost, const char *tag)
 
 static void USBH_LogEnumDetails(USBH_HandleTypeDef *phost, const char *stage)
 {
+  if (!joystick_uart_trace_enabled()) { return; }
   const USBH_DevDescTypeDef *dd;
   const USBH_InterfaceDescTypeDef *itf = NULL;
   const HID_HandleTypeDef *hid = NULL;
@@ -226,34 +228,34 @@ void MX_USB_HOST_Process(void)
 static void USBH_UserProcess  (USBH_HandleTypeDef *phost, uint8_t id)
 {
   /* USER CODE BEGIN CALL_BACK_1 */
-  printf("USB EVT %s id=%u t=%lu\r\n", USBH_UserEventName(id), (unsigned)id, HAL_GetTick());
+  JOYSTICK_TRACE_PRINTF("USB EVT %s id=%u t=%lu\r\n", USBH_UserEventName(id), (unsigned)id, HAL_GetTick());
 
   switch(id)
   {
   case HOST_USER_DISCONNECTION:
     Appli_state = APPLICATION_DISCONNECT;
     USBH_DebugUpdate(phost, Appli_state, USB_HOST_DBG_FAIL_DISCONNECT);
-    printf("USB: disconnect\r\n");
+    JOYSTICK_TRACE_PRINTF("USB: disconnect\r\n");
     USBH_LogSnapshot(phost, "disconnect");
     break;
 
   case HOST_USER_CONNECTION:
     Appli_state = APPLICATION_START;
     USBH_DebugUpdate(phost, Appli_state, USB_HOST_DBG_FAIL_NONE);
-    printf("USB: connect\r\n");
+    JOYSTICK_TRACE_PRINTF("USB: connect\r\n");
     USBH_LogSnapshot(phost, "connect");
     break;
 
   case HOST_USER_SELECT_CONFIGURATION:
     USBH_DebugUpdate(phost, Appli_state, USB_HOST_DBG_FAIL_NONE);
-    printf("USB: set configuration\r\n");
+    JOYSTICK_TRACE_PRINTF("USB: set configuration\r\n");
     USBH_LogSnapshot(phost, "set_config");
     USBH_LogEnumDetails(phost, "set_config");
     break;
 
   case HOST_USER_CLASS_SELECTED:
     USBH_DebugUpdate(phost, Appli_state, USB_HOST_DBG_FAIL_NONE);
-    printf("USB: class selected\r\n");
+    JOYSTICK_TRACE_PRINTF("USB: class selected\r\n");
     USBH_LogSnapshot(phost, "class_selected");
     USBH_LogEnumDetails(phost, "class_selected");
     break;
@@ -262,7 +264,7 @@ static void USBH_UserProcess  (USBH_HandleTypeDef *phost, uint8_t id)
     {
       Appli_state = APPLICATION_READY;
       USBH_DebugUpdate(phost, Appli_state, USB_HOST_DBG_FAIL_NONE);
-      printf("USB: class active\r\n");
+      JOYSTICK_TRACE_PRINTF("USB: class active\r\n");
       USBH_LogSnapshot(phost, "class_active");
       USBH_LogEnumDetails(phost, "class_active");
       break;
@@ -271,7 +273,7 @@ static void USBH_UserProcess  (USBH_HandleTypeDef *phost, uint8_t id)
   case HOST_USER_UNRECOVERED_ERROR:
     Appli_state = APPLICATION_DISCONNECT;
     USBH_DebugUpdate(phost, Appli_state, USB_HOST_DBG_FAIL_UNRECOVERED);
-    printf("USB: unrecovered error\r\n");
+    JOYSTICK_TRACE_PRINTF("USB: unrecovered error\r\n");
     USBH_LogSnapshot(phost, "unrec_error");
     break;
 

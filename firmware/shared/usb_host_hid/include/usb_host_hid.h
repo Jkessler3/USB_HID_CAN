@@ -43,7 +43,7 @@ typedef struct {
     uint8_t button_count;
     int16_t axes[USB_HOST_HID_MAX_AXES];
     int8_t hats[USB_HOST_HID_MAX_HATS];
-    uint32_t buttons;
+    uint64_t buttons;
     uint32_t sequence;
     uint32_t timestamp_ms;
 } usb_host_hid_joystick_state_t;
@@ -74,6 +74,33 @@ typedef struct {
     uint8_t hats_offset;
     uint8_t hat_count;
 } usb_host_hid_report_layout_t;
+
+/* One self-contained joystick/gamepad input report. Field offsets exclude the ID byte. */
+#define USB_HOST_HID_MAX_BUTTONS 64U
+typedef struct {
+    uint16_t offset;
+    uint8_t size;
+    int32_t minimum;
+    int32_t maximum;
+    bool null_state;
+} usb_host_hid_bitfield_t;
+
+typedef struct {
+    uint16_t payload_bits;
+    bool has_report_id;
+    uint8_t report_id;
+    uint8_t axis_count;     /* Highest assigned axis index + 1; missing axes stay neutral. */
+    uint8_t button_count;   /* Highest assigned one-based HID button usage. */
+    usb_host_hid_bitfield_t axes[USB_HOST_HID_MAX_AXES];
+    usb_host_hid_bitfield_t hat;
+    uint16_t button_bits[USB_HOST_HID_MAX_BUTTONS]; /* bit offset + 1, or zero if absent */
+} usb_host_hid_descriptor_t;
+
+bool usb_host_hid_compile_descriptor(const uint8_t *descriptor, uint16_t length,
+                                     usb_host_hid_descriptor_t *plan);
+bool usb_host_hid_decode_input(const usb_host_hid_descriptor_t *plan, const uint8_t *report,
+                               uint16_t length, uint32_t now_ms, uint32_t sequence,
+                               usb_host_hid_joystick_state_t *sample);
 
 void usb_host_hid_device_reset(usb_host_hid_device_info_t *info);
 void usb_host_hid_device_set_stale_timeout(usb_host_hid_device_info_t *info,

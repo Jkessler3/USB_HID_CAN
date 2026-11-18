@@ -12,9 +12,9 @@ if (-not (Test-Path $targetDir)) {
     Write-Error "Target directory not found: $targetDir"
 }
 
-$patterns = @("*.elf")
+$patterns = @("$Target.elf")
 if ($All) {
-    $patterns += @("*.map", "*.list", "*.hex", "*.bin")
+    $patterns += @("$Target.map", "$Target.list", "$Target.hex", "$Target.bin")
 }
 
 $deleted = 0

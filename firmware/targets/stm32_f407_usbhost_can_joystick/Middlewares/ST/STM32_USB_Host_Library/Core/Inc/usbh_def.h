@@ -353,6 +353,8 @@ typedef enum
   HOST_CLASS,
   HOST_SUSPENDED,
   HOST_ABORT_STATE,
+  HOST_DEV_ATTACH_SETTLE,
+  HOST_DEV_RESET_ASSERTED,
 } HOST_StateTypeDef;
 
 /* Following states are used for EnumerationState */
@@ -482,7 +484,7 @@ typedef struct _USBH_HandleTypeDef
   uint32_t              NakTimer;
   uint32_t              NakTimeout;
 #endif /* defined (USBH_IN_NAK_PROCESS) && (USBH_IN_NAK_PROCESS == 1U) */
-  uint32_t              Timeout;
+  uint32_t              AttachPhaseStartedMs; /* Monotonic tick, independent of USB SOF */
   uint8_t               id;
   void                 *pData;
   void (* pUser)(struct _USBH_HandleTypeDef *pHandle, uint8_t id);

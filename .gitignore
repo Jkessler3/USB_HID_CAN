@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+*.lnk
 
 # STM32CubeIDE build output
 **/Debug/
@@ -37,3 +38,9 @@ debug_gdbserver*.log
 tools/JoystickMapper/**/bin/
 tools/JoystickMapper/**/obj/
 tools/JoystickMapper/dist/
+tools/CANaerospaceJoystickMapper/**/bin/
+tools/CANaerospaceJoystickMapper/**/obj/
+tools/CANaerospaceJoystickMapper/dist/
+tools/CANaerospaceJoystickMapper/*.user
+tools/CANaerospaceJoystickMapper/*.suo
+tools/CANaerospaceJoystickMapper/*.log

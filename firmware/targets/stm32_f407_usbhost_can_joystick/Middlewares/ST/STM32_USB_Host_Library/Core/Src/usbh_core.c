@@ -42,6 +42,10 @@
 #define USBH_ADDRESS_DEFAULT                     0x00U
 #define USBH_ADDRESS_ASSIGNED                    0x01U
 #define USBH_MPS_DEFAULT                         0x40U
+#define USBH_ATTACH_SETTLE_MS                    200U
+#define USBH_RESET_PULSE_MS                      100U
+#define USBH_RESET_RECOVERY_MS                    10U
+#define USBH_POST_RESET_MS                       100U
 /**
   * @}
   */
@@ -75,6 +79,15 @@ osThreadAttr_t USBH_Thread_Atrr;
 static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost);
 static void USBH_HandleSof(USBH_HandleTypeDef *phost);
 static USBH_StatusTypeDef DeInitStateMachine(USBH_HandleTypeDef *phost);
+
+static void USBH_CancelPortReset(USBH_HandleTypeDef *phost)
+{
+  if (phost->gState == HOST_DEV_RESET_ASSERTED)
+  {
+    USBH_LL_SetPortReset(phost, 0U);
+    phost->gState = HOST_IDLE;
+  }
+}
 
 #if (USBH_USE_OS == 1U)
 #if (osCMSIS < 0x20000U)
@@ -176,6 +189,7 @@ USBH_StatusTypeDef USBH_Init(USBH_HandleTypeDef *phost,
   */
 USBH_StatusTypeDef USBH_DeInit(USBH_HandleTypeDef *phost)
 {
+  USBH_CancelPortReset(phost);
   (void)DeInitStateMachine(phost);
 
   /* Restore default Device connection states */
@@ -424,6 +438,7 @@ USBH_StatusTypeDef USBH_Start(USBH_HandleTypeDef *phost)
   */
 USBH_StatusTypeDef USBH_Stop(USBH_HandleTypeDef *phost)
 {
+  USBH_CancelPortReset(phost);
   /* DeActivate VBUS on the port */
   (void)USBH_LL_DriverVBUS(phost, FALSE);
 
@@ -478,6 +493,7 @@ USBH_StatusTypeDef USBH_Process(USBH_HandleTypeDef *phost)
   /* check for Host pending port disconnect event */
   if (phost->device.is_disconnected == 1U)
   {
+    USBH_CancelPortReset(phost);
     phost->gState = HOST_DEV_DISCONNECTED;
   }
 
@@ -489,66 +505,73 @@ USBH_StatusTypeDef USBH_Process(USBH_HandleTypeDef *phost)
       {
         USBH_UsrLog("USB Device Connected");
 
-        /* Wait for 200 ms after connection */
-        phost->gState = HOST_DEV_WAIT_FOR_ATTACHMENT;
-        USBH_Delay(200U);
-        (void)USBH_LL_ResetPort(phost);
-
-        /* Make sure to start with Default address */
-        phost->device.address = USBH_ADDRESS_DEFAULT;
-        phost->Timeout = 0U;
-
-#if (USBH_USE_OS == 1U)
-        USBH_OS_PutMessage(phost, USBH_PORT_EVENT, 0U, 0U);
-#endif /* (USBH_USE_OS == 1U) */
+        phost->AttachPhaseStartedMs = USBH_LL_GetTick();
+        phost->gState = HOST_DEV_ATTACH_SETTLE;
       }
       break;
 
-    case HOST_DEV_WAIT_FOR_ATTACHMENT: /* Wait for Port Enabled */
+    case HOST_DEV_ATTACH_SETTLE:
+      /* As in HAL_Delay, allow a tick for quantization so that starting just
+         before a tick boundary cannot shorten the electrical delays. */
+      if ((USBH_LL_GetTick() - phost->AttachPhaseStartedMs) > USBH_ATTACH_SETTLE_MS)
+      {
+        phost->device.address = USBH_ADDRESS_DEFAULT;
+        phost->device.PortEnabled = 0U;
+        phost->gState = HOST_DEV_RESET_ASSERTED;
+        USBH_LL_SetPortReset(phost, 1U);
+        phost->AttachPhaseStartedMs = USBH_LL_GetTick();
+      }
+      break;
 
-      if (phost->device.PortEnabled == 1U)
+    case HOST_DEV_RESET_ASSERTED:
+      if ((USBH_LL_GetTick() - phost->AttachPhaseStartedMs) > USBH_RESET_PULSE_MS)
+      {
+        USBH_LL_SetPortReset(phost, 0U);
+        phost->AttachPhaseStartedMs = USBH_LL_GetTick();
+        phost->gState = HOST_DEV_WAIT_FOR_ATTACHMENT;
+      }
+      break;
+
+    case HOST_DEV_WAIT_FOR_ATTACHMENT:
+    {
+      uint32_t elapsed = USBH_LL_GetTick() - phost->AttachPhaseStartedMs;
+      if (elapsed <= USBH_RESET_RECOVERY_MS)
+      {
+        break;
+      }
+      if (phost->device.PortEnabled != 0U)
       {
         USBH_UsrLog("USB Device Reset Completed");
         phost->device.RstCnt = 0U;
         phost->gState = HOST_DEV_ATTACHED;
-      }
-      else
-      {
-        if (phost->Timeout > USBH_DEV_RESET_TIMEOUT)
+        if (phost->pUser != NULL)
         {
-          phost->device.RstCnt++;
-          if (phost->device.RstCnt > 3U)
-          {
-            /* Buggy Device can't complete reset */
-            USBH_UsrLog("USB Reset Failed, Please unplug the Device.");
-            phost->gState = HOST_ABORT_STATE;
-          }
-          else
-          {
-            phost->gState = HOST_IDLE;
-          }
+          phost->pUser(phost, HOST_USER_CONNECTION);
+        }
+        phost->AttachPhaseStartedMs = USBH_LL_GetTick();
+      }
+      else if ((elapsed - USBH_RESET_RECOVERY_MS) >= USBH_DEV_RESET_TIMEOUT)
+      {
+        phost->device.RstCnt++;
+        if (phost->device.RstCnt > 3U)
+        {
+          USBH_UsrLog("USB Reset Failed, Please unplug the Device.");
+          phost->gState = HOST_ABORT_STATE;
         }
         else
         {
-          phost->Timeout += 10U;
-          USBH_Delay(10U);
+          phost->AttachPhaseStartedMs = USBH_LL_GetTick();
+          phost->gState = HOST_DEV_ATTACH_SETTLE;
         }
       }
-
-#if (USBH_USE_OS == 1U)
-      USBH_OS_PutMessage(phost, USBH_PORT_EVENT, 0U, 0U);
-#endif /* (USBH_USE_OS == 1U) */
       break;
+    }
 
     case HOST_DEV_ATTACHED :
-
-      if (phost->pUser != NULL)
+      if ((USBH_LL_GetTick() - phost->AttachPhaseStartedMs) <= USBH_POST_RESET_MS)
       {
-        phost->pUser(phost, HOST_USER_CONNECTION);
+        break;
       }
-
-      /* Wait for 100 ms after Reset */
-      USBH_Delay(100U);
 
       phost->device.speed = (uint8_t)USBH_LL_GetSpeed(phost);
 
@@ -671,9 +694,9 @@ USBH_StatusTypeDef USBH_Process(USBH_HandleTypeDef *phost)
       {
         phost->pActiveClass = NULL;
 
-        for (idx = 0U; idx < USBH_MAX_NUM_SUPPORTED_CLASS; idx++)
+        for (idx = 0U; idx < phost->ClassNumber; idx++)
         {
-          if (phost->pClass[idx]->ClassCode == phost->device.CfgDesc.Itf_Desc[0].bInterfaceClass)
+          if (USBH_FindInterface(phost, phost->pClass[idx]->ClassCode, 0xFFU, 0xFFU) != 0xFFU)
           {
             phost->pActiveClass = phost->pClass[idx];
             break;
@@ -1172,7 +1195,13 @@ void USBH_LL_PortEnabled(USBH_HandleTypeDef *phost)
 void USBH_LL_PortDisabled(USBH_HandleTypeDef *phost)
 {
   phost->device.PortEnabled = 0U;
-  phost->device.is_disconnected = 1U;
+  /* A reset can disable an already enabled port on an enumeration retry.
+     Physical disconnects also raise the independent disconnect interrupt. */
+  if ((phost->gState != HOST_DEV_RESET_ASSERTED) &&
+      (phost->gState != HOST_DEV_WAIT_FOR_ATTACHMENT))
+  {
+    phost->device.is_disconnected = 1U;
+  }
 
   return;
 }
@@ -1199,7 +1228,8 @@ uint8_t USBH_IsPortEnabled(USBH_HandleTypeDef *phost)
 USBH_StatusTypeDef USBH_LL_Connect(USBH_HandleTypeDef *phost)
 {
   phost->device.is_connected = 1U;
-  phost->device.is_disconnected = 0U;
+  /* A reconnect before the next foreground poll must still tear down
+     the previous device and cancel any in-flight reset. */
   phost->device.is_ReEnumerated = 0U;
 
 #if (USBH_USE_OS == 1U)
@@ -1269,6 +1299,22 @@ void USBH_OS_PutMessage(USBH_HandleTypeDef *phost, USBH_OSEventTypeDef message, 
 #endif /* (osCMSIS < 0x20000U) */
 }
 
+/* SOF and port interrupts alone cannot advance the attachment timers.
+   Wake the USB worker once per kernel tick only while those timers run. */
+static uint32_t USBH_OS_EventWait(const USBH_HandleTypeDef *phost)
+{
+  switch (phost->gState)
+  {
+    case HOST_DEV_ATTACH_SETTLE:
+    case HOST_DEV_RESET_ASSERTED:
+    case HOST_DEV_WAIT_FOR_ATTACHMENT:
+    case HOST_DEV_ATTACHED:
+      return 1U;
+    default:
+      return osWaitForever;
+  }
+}
+
 /**
   * @brief  USB Host Thread task
   * @param  pvParameters not used
@@ -1277,29 +1323,31 @@ void USBH_OS_PutMessage(USBH_HandleTypeDef *phost, USBH_OSEventTypeDef message, 
 #if (osCMSIS < 0x20000U)
 static void USBH_Process_OS(void const *argument)
 {
+  USBH_HandleTypeDef *phost = (USBH_HandleTypeDef *)argument;
   osEvent event;
 
   for (;;)
   {
-    event = osMessageGet(((USBH_HandleTypeDef *)argument)->os_event, osWaitForever);
-    if (event.status == osEventMessage)
+    event = osMessageGet(phost->os_event, USBH_OS_EventWait(phost));
+    if ((event.status == osEventMessage) || (event.status == osEventTimeout))
     {
-      USBH_Process((USBH_HandleTypeDef *)argument);
+      USBH_Process(phost);
     }
   }
 }
 #else
 static void USBH_Process_OS(void *argument)
 {
+  USBH_HandleTypeDef *phost = (USBH_HandleTypeDef *)argument;
   osStatus_t status;
 
   for (;;)
   {
-    status = osMessageQueueGet(((USBH_HandleTypeDef *)argument)->os_event,
-                               &((USBH_HandleTypeDef *)argument)->os_msg, NULL, osWaitForever);
-    if (status == osOK)
+    status = osMessageQueueGet(phost->os_event, &phost->os_msg, NULL,
+                               USBH_OS_EventWait(phost));
+    if ((status == osOK) || (status == osErrorTimeout))
     {
-      USBH_Process((USBH_HandleTypeDef *)argument);
+      USBH_Process(phost);
     }
   }
 }

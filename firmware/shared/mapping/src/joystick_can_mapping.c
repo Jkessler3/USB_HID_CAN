@@ -2,24 +2,15 @@
 
 #include <string.h>
 
-static int16_t clamp_i16(int32_t value, int16_t min_value, int16_t max_value)
-{
-    if (value > max_value) {
-        return max_value;
-    }
-    if (value < min_value) {
-        return min_value;
-    }
-    return (int16_t)value;
-}
-
-static int16_t apply_deadzone(int16_t value, uint16_t deadzone)
-{
-    if ((value < (int16_t)deadzone) && (value > (int16_t)(-(int16_t)deadzone))) {
-        return 0;
-    }
-    return value;
-}
+typedef enum {
+    CA_PARAM_AXIS_XY = 0,
+    CA_PARAM_AXIS_Z_RX,
+    CA_PARAM_AXIS_RY_RZ,
+    CA_PARAM_AXIS_SLIDER_DIAL,
+    CA_PARAM_BUTTONS_0_31,
+    CA_PARAM_BUTTONS_32_63,
+    CA_PARAM_STATUS
+} ca_param_index_t;
 
 static bool period_elapsed(uint32_t now_ms, uint32_t last_ms, uint16_t period_ms)
 {
@@ -29,166 +20,168 @@ static bool period_elapsed(uint32_t now_ms, uint32_t last_ms, uint16_t period_ms
     return ((now_ms - last_ms) >= period_ms);
 }
 
-static int16_t map_axis_value(const joystick_can_axis_map_t *map, int16_t raw_value)
+static uint16_t axis_to_u16(const joystick_can_pipeline_state_t *state, uint8_t axis_index, bool failsafe)
 {
-    int32_t in_span;
-    int32_t out_span;
     int32_t value;
 
-    if (map == NULL) {
-        return 0;
+    if ((state == NULL) || failsafe || !state->has_sample || !state->sample.valid ||
+        (axis_index >= state->sample.axis_count)) {
+        return 32768U;
     }
 
-    value = apply_deadzone(raw_value, map->deadzone);
-    value = clamp_i16(value, map->input_min, map->input_max);
-
-    in_span = (int32_t)map->input_max - (int32_t)map->input_min;
-    out_span = (int32_t)map->output_max - (int32_t)map->output_min;
-
-    if (in_span == 0) {
-        value = map->output_min;
-    } else {
-        value = ((value - map->input_min) * out_span) / in_span + map->output_min;
+    value = (int32_t)state->sample.axes[axis_index] + 32768L;
+    if (value < 0L) {
+        value = 0L;
+    } else if (value > 65535L) {
+        value = 65535L;
     }
-
-    if (map->invert) {
-        value = -value;
-    }
-
-    return clamp_i16(value, map->output_min, map->output_max);
+    return (uint16_t)value;
 }
 
-static uint8_t make_status_flags(const joystick_can_pipeline_state_t *state,
+static uint32_t buttons_to_blong(const joystick_can_pipeline_state_t *state,
+                                 uint8_t first_button,
                                  bool failsafe)
 {
-    uint8_t flags = 0U;
-
-    if (state == NULL) {
-        return JOYSTICK_CAN_STATUS_USB_DISCONNECTED |
-               JOYSTICK_CAN_STATUS_DATA_STALE |
-               JOYSTICK_CAN_STATUS_HID_PARSE_ERROR;
+    if (failsafe || first_button >= state->sample.button_count) {
+        return 0UL;
     }
 
-    if (state->connected) {
-        flags |= JOYSTICK_CAN_STATUS_JOYSTICK_PRESENT;
-    } else {
-        flags |= JOYSTICK_CAN_STATUS_USB_DISCONNECTED;
+    uint32_t bank = (uint32_t)((uint64_t)state->sample.buttons >> first_button);
+    uint8_t count = state->sample.button_count - first_button;
+    if (count < 32U) {
+        bank &= (UINT32_C(1) << count) - 1U;
+    }
+    return bank;
+}
+
+static bool update_sample_age(const joystick_can_mapping_table_t *table,
+                              joystick_can_pipeline_state_t *state,
+                              uint32_t now_ms)
+{
+    uint32_t age_ms = now_ms - state->last_report_ms;
+    uint8_t bucket = age_ms >= 2550U ? 255U : (uint8_t)(age_ms / 10U);
+    if (bucket > state->report_age_bucket) {
+        state->report_age_bucket = bucket;
+    }
+    /* A continuously attached silent device can outlive the 32-bit tick epoch. */
+    if (table->stale_timeout_ms != 0U && age_ms > table->stale_timeout_ms) {
+        state->sample.stale = true;
+    }
+    return !state->connected || !state->has_sample || !state->sample.valid || state->sample.stale;
+}
+
+uint8_t joystick_can_pipeline_hid_quality(const joystick_can_mapping_table_t *table,
+                                          joystick_can_pipeline_state_t *state,
+                                          uint32_t now_ms)
+{
+    uint8_t service = JOYSTICK_CANAEROSPACE_SERVICE_VALID;
+
+    if (table == NULL || state == NULL) {
+        return JOYSTICK_CANAEROSPACE_SERVICE_USB_DISCONNECTED |
+               JOYSTICK_CANAEROSPACE_SERVICE_JOYSTICK_NOT_PRESENT |
+               JOYSTICK_CANAEROSPACE_SERVICE_DATA_STALE;
+    }
+    if (!state->connected) {
+        service |= JOYSTICK_CANAEROSPACE_SERVICE_USB_DISCONNECTED;
+    }
+    if (!state->joystick_present) {
+        service |= JOYSTICK_CANAEROSPACE_SERVICE_JOYSTICK_NOT_PRESENT;
     }
 
-    if (state->has_sample && state->sample.valid && !failsafe) {
-        flags |= JOYSTICK_CAN_STATUS_HID_SAMPLE_VALID;
-    }
-
-    if (failsafe || state->sample.stale) {
-        flags |= JOYSTICK_CAN_STATUS_DATA_STALE;
-    }
-
-    if (state->can_tx_backpressure_seen) {
-        flags |= JOYSTICK_CAN_STATUS_TX_BACKPRESSURE_SEEN;
+    if (update_sample_age(table, state, now_ms)) {
+        service |= JOYSTICK_CANAEROSPACE_SERVICE_DATA_STALE;
     }
 
     if (state->hid_parse_error) {
-        flags |= JOYSTICK_CAN_STATUS_HID_PARSE_ERROR;
+        service |= JOYSTICK_CANAEROSPACE_SERVICE_HID_PARSE_ERROR;
     }
 
-    return flags;
+    return service;
 }
 
-static void write_control_frame(const joystick_can_mapping_table_t *table,
-                                joystick_can_pipeline_state_t *state,
-                                bool failsafe,
-                                can_frame_t *out_frame)
+static void write_header(const joystick_can_mapping_table_t *table,
+                         const joystick_can_pipeline_state_t *state,
+                         ca_param_index_t param,
+                         uint8_t data_type,
+                         uint8_t service,
+                         can_frame_t *out_frame)
 {
-    int16_t signal_values[JOYSTICK_CAN_SIGNAL_COUNT];
-    uint8_t i;
-    uint8_t button_flags;
-
-    memset(signal_values, 0, sizeof(signal_values));
-    button_flags = 0U;
-
-    if (!failsafe && state->has_sample && state->sample.valid) {
-        uint8_t axis_map_count = table->axis_map_count;
-        uint8_t button_map_count = table->button_map_count;
-
-        if (axis_map_count > JOYSTICK_CAN_MAX_AXIS_MAPS) {
-            axis_map_count = JOYSTICK_CAN_MAX_AXIS_MAPS;
-        }
-        if (button_map_count > JOYSTICK_CAN_MAX_BUTTON_MAPS) {
-            button_map_count = JOYSTICK_CAN_MAX_BUTTON_MAPS;
-        }
-
-        for (i = 0U; i < axis_map_count; i++) {
-            const joystick_can_axis_map_t *map = &table->axis_maps[i];
-            int16_t source_value;
-            int16_t mapped;
-
-            if ((map->axis_index >= state->sample.axis_count) ||
-                (map->signal_index >= JOYSTICK_CAN_SIGNAL_COUNT)) {
-                continue;
-            }
-
-            source_value = state->sample.axes[map->axis_index];
-            mapped = map_axis_value(map, source_value);
-            signal_values[map->signal_index] = mapped;
-        }
-
-        for (i = 0U; i < button_map_count; i++) {
-            const joystick_can_button_map_t *map = &table->button_maps[i];
-            bool pressed;
-
-            if ((map->button_index >= 32U) || (map->out_byte_index >= 8U)) {
-                continue;
-            }
-
-            pressed = ((state->sample.buttons & (1UL << map->button_index)) != 0U);
-            if (map->active_high) {
-                if (pressed && (map->out_byte_index == 6U)) {
-                    button_flags |= map->out_bit_mask;
-                }
-            } else {
-                if (!pressed && (map->out_byte_index == 6U)) {
-                    button_flags |= map->out_bit_mask;
-                }
-            }
-        }
-    }
-
     can_frame_clear(out_frame);
-    out_frame->id = table->control_can_id;
+    out_frame->id = table->parameter_can_ids[param];
     out_frame->extended = false;
     out_frame->rtr = false;
     out_frame->dlc = 8U;
-    out_frame->data[0] = (uint8_t)(signal_values[JOYSTICK_CAN_SIGNAL_STEER] & 0xFF);
-    out_frame->data[1] = (uint8_t)((signal_values[JOYSTICK_CAN_SIGNAL_STEER] >> 8) & 0xFF);
-    out_frame->data[2] = (uint8_t)(signal_values[JOYSTICK_CAN_SIGNAL_THROTTLE] & 0xFF);
-    out_frame->data[3] = (uint8_t)((signal_values[JOYSTICK_CAN_SIGNAL_THROTTLE] >> 8) & 0xFF);
-    out_frame->data[4] = (uint8_t)signal_values[JOYSTICK_CAN_SIGNAL_AUX0];
-    out_frame->data[5] = (uint8_t)signal_values[JOYSTICK_CAN_SIGNAL_AUX1];
-    out_frame->data[6] = button_flags;
-    out_frame->data[7] = (uint8_t)(state->sample.sequence & 0xFFU);
+    out_frame->data[0] = table->node_id;
+    out_frame->data[1] = data_type;
+    out_frame->data[2] = service;
+    out_frame->data[3] = state->message_codes[param];
 }
 
-static void write_status_frame(const joystick_can_mapping_table_t *table,
-                               joystick_can_pipeline_state_t *state,
-                               bool failsafe,
-                               uint32_t now_ms,
-                               can_frame_t *out_frame)
+static void write_u16_be(uint8_t *data, uint8_t offset, uint16_t value)
 {
-    can_frame_clear(out_frame);
-    out_frame->id = table->status_can_id;
-    out_frame->extended = false;
-    out_frame->rtr = false;
-    out_frame->dlc = 8U;
-    out_frame->data[0] = make_status_flags(state, failsafe);
-    out_frame->data[1] = state->sample.axis_count;
-    out_frame->data[2] = (uint8_t)(state->sample.sequence & 0xFFU);
-    out_frame->data[3] = (uint8_t)(state->frame_sequence & 0xFFU);
-    out_frame->data[4] = (uint8_t)(state->last_report_ms & 0xFFU);
-    out_frame->data[5] = (uint8_t)((state->last_report_ms >> 8U) & 0xFFU);
-    out_frame->data[6] = (uint8_t)((state->last_report_ms >> 16U) & 0xFFU);
-    out_frame->data[7] = (uint8_t)((state->last_report_ms >> 24U) & 0xFFU);
+    data[offset] = (uint8_t)((value >> 8U) & 0xFFU);
+    data[offset + 1U] = (uint8_t)(value & 0xFFU);
+}
 
-    (void)now_ms;
+static void write_u32_be(uint8_t *data, uint8_t offset, uint32_t value)
+{
+    data[offset] = (uint8_t)((value >> 24U) & 0xFFU);
+    data[offset + 1U] = (uint8_t)((value >> 16U) & 0xFFU);
+    data[offset + 2U] = (uint8_t)((value >> 8U) & 0xFFU);
+    data[offset + 3U] = (uint8_t)(value & 0xFFU);
+}
+
+static void write_axis_pair(const joystick_can_mapping_table_t *table,
+                            const joystick_can_pipeline_state_t *state,
+                            ca_param_index_t param,
+                            uint8_t axis_a,
+                            uint8_t axis_b,
+                            bool failsafe,
+                            uint8_t service,
+                            can_frame_t *out_frame)
+{
+    write_header(table,
+                 state,
+                 param,
+                 JOYSTICK_CANAEROSPACE_TYPE_USHORT2,
+                 service,
+                 out_frame);
+    write_u16_be(out_frame->data, 4U, axis_to_u16(state, axis_a, failsafe));
+    write_u16_be(out_frame->data, 6U, axis_to_u16(state, axis_b, failsafe));
+}
+
+static void write_buttons(const joystick_can_mapping_table_t *table,
+                          const joystick_can_pipeline_state_t *state,
+                          ca_param_index_t param,
+                          uint8_t first_button,
+                          bool failsafe,
+                          uint8_t service,
+                          can_frame_t *out_frame)
+{
+    write_header(table,
+                 state,
+                 param,
+                 JOYSTICK_CANAEROSPACE_TYPE_BLONG,
+                 service,
+                 out_frame);
+    write_u32_be(out_frame->data, 4U, buttons_to_blong(state, first_button, failsafe));
+}
+
+static void write_status(const joystick_can_mapping_table_t *table,
+                         const joystick_can_pipeline_state_t *state,
+                         uint8_t service,
+                         can_frame_t *out_frame)
+{
+    write_header(table,
+                 state,
+                 CA_PARAM_STATUS,
+                 JOYSTICK_CANAEROSPACE_TYPE_UCHAR4,
+                 service,
+                 out_frame);
+    out_frame->data[4] = service;
+    out_frame->data[5] = (uint8_t)(state->sample.sequence & 0xFFU);
+    out_frame->data[6] = (uint8_t)(state->frame_sequence & 0xFFU);
+    out_frame->data[7] = state->report_age_bucket;
 }
 
 void joystick_can_mapping_table_init_default(joystick_can_mapping_table_t *table)
@@ -198,48 +191,20 @@ void joystick_can_mapping_table_init_default(joystick_can_mapping_table_t *table
     }
 
     memset(table, 0, sizeof(*table));
-    table->control_can_id = JOYSTICK_CAN_CONTROL_ID;
-    table->status_can_id = JOYSTICK_CAN_STATUS_ID;
-    table->control_period_ms = 20U;
+    table->node_id = JOYSTICK_CANAEROSPACE_NODE_ID_DEFAULT;
+    table->parameter_can_ids[CA_PARAM_AXIS_XY] = JOYSTICK_CANAEROSPACE_AXIS_XY_ID;
+    table->parameter_can_ids[CA_PARAM_AXIS_Z_RX] = JOYSTICK_CANAEROSPACE_AXIS_Z_RX_ID;
+    table->parameter_can_ids[CA_PARAM_AXIS_RY_RZ] = JOYSTICK_CANAEROSPACE_AXIS_RY_RZ_ID;
+    table->parameter_can_ids[CA_PARAM_AXIS_SLIDER_DIAL] = JOYSTICK_CANAEROSPACE_AXIS_SLIDER_DIAL_ID;
+    table->parameter_can_ids[CA_PARAM_BUTTONS_0_31] = JOYSTICK_CANAEROSPACE_BUTTONS_0_31_ID;
+    table->parameter_can_ids[CA_PARAM_BUTTONS_32_63] = JOYSTICK_CANAEROSPACE_BUTTONS_32_63_ID;
+    table->parameter_can_ids[CA_PARAM_STATUS] = JOYSTICK_CANAEROSPACE_STATUS_ID;
+    table->parameter_period_ms = 20U;
     table->status_period_ms = 100U;
     table->stale_timeout_ms = 250U;
 
-    table->axis_map_count = 2U;
-    table->axis_maps[0].axis_index = 0U;
-    table->axis_maps[0].signal_index = JOYSTICK_CAN_SIGNAL_STEER;
-    table->axis_maps[0].input_min = -32768;
-    table->axis_maps[0].input_max = 32767;
-    table->axis_maps[0].output_min = -1000;
-    table->axis_maps[0].output_max = 1000;
-    table->axis_maps[0].deadzone = 512U;
-    table->axis_maps[0].invert = false;
-
-    table->axis_maps[1].axis_index = 1U;
-    table->axis_maps[1].signal_index = JOYSTICK_CAN_SIGNAL_THROTTLE;
-    table->axis_maps[1].input_min = -32768;
-    table->axis_maps[1].input_max = 32767;
-    table->axis_maps[1].output_min = -1000;
-    table->axis_maps[1].output_max = 1000;
-    table->axis_maps[1].deadzone = 512U;
-    table->axis_maps[1].invert = true;
-
-    table->button_map_count = 4U;
-    table->button_maps[0].button_index = 0U;
-    table->button_maps[0].out_byte_index = 6U;
-    table->button_maps[0].out_bit_mask = 0x01U;
-    table->button_maps[0].active_high = true;
-    table->button_maps[1].button_index = 1U;
-    table->button_maps[1].out_byte_index = 6U;
-    table->button_maps[1].out_bit_mask = 0x02U;
-    table->button_maps[1].active_high = true;
-    table->button_maps[2].button_index = 2U;
-    table->button_maps[2].out_byte_index = 6U;
-    table->button_maps[2].out_bit_mask = 0x04U;
-    table->button_maps[2].active_high = true;
-    table->button_maps[3].button_index = 3U;
-    table->button_maps[3].out_byte_index = 6U;
-    table->button_maps[3].out_bit_mask = 0x08U;
-    table->button_maps[3].active_high = true;
+    table->axis_map_count = 0U;
+    table->button_map_count = 0U;
 }
 
 void joystick_can_pipeline_reset(joystick_can_pipeline_state_t *state)
@@ -259,9 +224,12 @@ void joystick_can_pipeline_on_connect(joystick_can_pipeline_state_t *state,
     }
 
     state->connected = true;
-    state->failsafe_active = false;
-    state->usb_disconnected = false;
+    state->joystick_present = false;
+    state->has_sample = false;
+    state->hid_parse_error = false;
+    usb_host_hid_joystick_state_clear(&state->sample);
     state->last_report_ms = now_ms;
+    state->report_age_bucket = 0U;
 }
 
 void joystick_can_pipeline_on_disconnect(joystick_can_pipeline_state_t *state,
@@ -272,10 +240,11 @@ void joystick_can_pipeline_on_disconnect(joystick_can_pipeline_state_t *state,
     }
 
     state->connected = false;
-    state->failsafe_active = true;
+    state->joystick_present = false;
+    state->hid_parse_error = false;
     state->has_sample = false;
-    state->usb_disconnected = true;
     state->last_report_ms = now_ms;
+    state->report_age_bucket = 0U;
     usb_host_hid_joystick_mark_disconnected(&state->sample, now_ms);
 }
 
@@ -289,11 +258,14 @@ void joystick_can_pipeline_submit_sample(joystick_can_pipeline_state_t *state,
     state->sample = *sample;
     state->has_sample = sample->valid;
     state->connected = sample->connected;
-    state->usb_disconnected = !sample->connected;
-    if (sample->valid) {
+    if (!sample->connected) {
+        state->joystick_present = false;
+    } else if (sample->valid && !sample->stale) {
+        state->joystick_present = true;
         state->hid_parse_error = false;
     }
     state->last_report_ms = sample->timestamp_ms;
+    state->report_age_bucket = 0U;
 }
 
 void joystick_can_pipeline_note_tx_backpressure(joystick_can_pipeline_state_t *state)
@@ -302,8 +274,10 @@ void joystick_can_pipeline_note_tx_backpressure(joystick_can_pipeline_state_t *s
         return;
     }
 
-    state->can_tx_backpressure_seen = true;
-    state->can_tx_backpressure_count += 1U;
+    if (!state->can_tx_backpressure_pending) {
+        state->can_tx_backpressure_count += 1U;
+        state->can_tx_backpressure_pending = true;
+    }
 }
 
 void joystick_can_pipeline_note_hid_parse_error(joystick_can_pipeline_state_t *state)
@@ -316,22 +290,10 @@ void joystick_can_pipeline_note_hid_parse_error(joystick_can_pipeline_state_t *s
 }
 
 bool joystick_can_pipeline_is_failsafe(const joystick_can_mapping_table_t *table,
-                                       const joystick_can_pipeline_state_t *state,
+                                       joystick_can_pipeline_state_t *state,
                                        uint32_t now_ms)
 {
-    if ((table == NULL) || (state == NULL)) {
-        return true;
-    }
-
-    if (!state->connected || !state->has_sample || !state->sample.valid || state->sample.stale) {
-        return true;
-    }
-
-    if (table->stale_timeout_ms == 0U) {
-        return false;
-    }
-
-    return ((now_ms - state->last_report_ms) > table->stale_timeout_ms);
+    return joystick_can_pipeline_hid_quality(table, state, now_ms) != JOYSTICK_CANAEROSPACE_SERVICE_VALID;
 }
 
 bool joystick_can_pipeline_build_next_frame(const joystick_can_mapping_table_t *table,
@@ -340,35 +302,90 @@ bool joystick_can_pipeline_build_next_frame(const joystick_can_mapping_table_t *
                                             can_frame_t *out_frame,
                                             joystick_can_tx_kind_t *out_kind)
 {
-    bool control_due;
-    bool status_due;
+    return joystick_can_pipeline_prepare_available(table, state, now_ms, 0U, out_frame, out_kind);
+}
+
+bool joystick_can_pipeline_prepare_available(const joystick_can_mapping_table_t *table,
+                                             joystick_can_pipeline_state_t *state,
+                                             uint32_t now_ms,
+                                             uint32_t unavailable_parameters,
+                                             can_frame_t *out_frame,
+                                             joystick_can_tx_kind_t *out_kind)
+{
+    uint8_t attempts;
     bool failsafe;
+    uint8_t service;
 
     if ((table == NULL) || (state == NULL) || (out_frame == NULL) || (out_kind == NULL)) {
         return false;
     }
 
     *out_kind = JOYSTICK_CAN_TX_NONE;
-    control_due = period_elapsed(now_ms, state->last_control_tx_ms, table->control_period_ms);
-    status_due = period_elapsed(now_ms, state->last_status_tx_ms, table->status_period_ms);
-    if (!control_due && !status_due) {
-        return false;
+    service = joystick_can_pipeline_hid_quality(table, state, now_ms);
+    failsafe = service != JOYSTICK_CANAEROSPACE_SERVICE_VALID;
+    if (state->can_tx_backpressure_pending) {
+        service |= JOYSTICK_CANAEROSPACE_SERVICE_TX_BACKPRESSURE_SEEN;
     }
 
-    failsafe = joystick_can_pipeline_is_failsafe(table, state, now_ms);
-    state->failsafe_active = failsafe;
+    for (attempts = 0U; attempts < JOYSTICK_CANAEROSPACE_PARAM_COUNT; attempts++) {
+        ca_param_index_t param = (ca_param_index_t)((state->next_parameter_index + attempts) %
+                                                    JOYSTICK_CANAEROSPACE_PARAM_COUNT);
+        uint16_t period = (param == CA_PARAM_STATUS) ? table->status_period_ms : table->parameter_period_ms;
 
-    if (control_due) {
-        write_control_frame(table, state, failsafe, out_frame);
-        state->last_control_tx_ms = now_ms;
-        state->frame_sequence += 1U;
-        *out_kind = JOYSTICK_CAN_TX_CONTROL;
-        return true;
+        if ((unavailable_parameters & (1UL << param)) == 0U &&
+            period_elapsed(now_ms, state->last_parameter_tx_ms[param], period)) {
+            switch (param) {
+            case CA_PARAM_AXIS_XY:
+                write_axis_pair(table, state, param, 0U, 1U, failsafe, service, out_frame);
+                *out_kind = JOYSTICK_CAN_TX_AXIS_XY;
+                break;
+            case CA_PARAM_AXIS_Z_RX:
+                write_axis_pair(table, state, param, 2U, 3U, failsafe, service, out_frame);
+                *out_kind = JOYSTICK_CAN_TX_AXIS_Z_RX;
+                break;
+            case CA_PARAM_AXIS_RY_RZ:
+                write_axis_pair(table, state, param, 4U, 5U, failsafe, service, out_frame);
+                *out_kind = JOYSTICK_CAN_TX_AXIS_RY_RZ;
+                break;
+            case CA_PARAM_AXIS_SLIDER_DIAL:
+                write_axis_pair(table, state, param, 6U, 7U, failsafe, service, out_frame);
+                *out_kind = JOYSTICK_CAN_TX_AXIS_SLIDER_DIAL;
+                break;
+            case CA_PARAM_BUTTONS_0_31:
+                write_buttons(table, state, param, 0U, failsafe, service, out_frame);
+                *out_kind = JOYSTICK_CAN_TX_BUTTONS_0_31;
+                break;
+            case CA_PARAM_BUTTONS_32_63:
+                write_buttons(table, state, param, 32U, failsafe, service, out_frame);
+                *out_kind = JOYSTICK_CAN_TX_BUTTONS_32_63;
+                break;
+            case CA_PARAM_STATUS:
+            default:
+                write_status(table, state, service, out_frame);
+                *out_kind = JOYSTICK_CAN_TX_STATUS;
+                break;
+            }
+
+            return true;
+        }
     }
 
-    write_status_frame(table, state, failsafe, now_ms, out_frame);
-    state->last_status_tx_ms = now_ms;
-    state->frame_sequence += 1U;
-    *out_kind = JOYSTICK_CAN_TX_STATUS;
-    return true;
+    return false;
+}
+
+void joystick_can_pipeline_commit_frame(joystick_can_pipeline_state_t *state,
+                                        joystick_can_tx_kind_t kind,
+                                        uint32_t now_ms)
+{
+    if (state == NULL || kind < JOYSTICK_CAN_TX_AXIS_XY || kind > JOYSTICK_CAN_TX_STATUS) {
+        return;
+    }
+    /* The public transmit kinds follow the parameter order, after TX_NONE. */
+    uint8_t param = (uint8_t)(kind - JOYSTICK_CAN_TX_AXIS_XY);
+    state->message_codes[param]++;
+    state->last_parameter_tx_ms[param] = now_ms;
+    state->last_status_tx_ms = state->last_parameter_tx_ms[CA_PARAM_STATUS];
+    state->next_parameter_index = (uint8_t)((param + 1U) % JOYSTICK_CANAEROSPACE_PARAM_COUNT);
+    state->frame_sequence++;
+    state->can_tx_backpressure_pending = false;
 }

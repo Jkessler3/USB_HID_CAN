@@ -22,8 +22,6 @@ void joystick_translator_app_init(CAN_HandleTypeDef *hcan,
 void joystick_translator_app_run(uint32_t now_ms,
                                  ApplicationTypeDef appli_state);
 
-void joystick_translator_app_on_hid_report(USBH_HandleTypeDef *phost);
-
 void joystick_translator_app_on_can_rx_pending(CAN_HandleTypeDef *hcan);
 
 #ifdef __cplusplus
